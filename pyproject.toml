@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentbench-local"
+version = "1.0.0"
+description = "Reproducible local benchmarking and comparison for coding agents"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "Jake Takahashi"}]
+dependencies = [
+  "fastapi>=0.104.0",
+  "uvicorn[standard]>=0.24.0",
+  "sqlalchemy>=2.0.0",
+  "alembic>=1.12.0",
+  "pydantic>=2.0.0",
+  "pydantic-settings>=2.0.0",
+  "PyYAML>=6.0.0",
+  "jinja2>=3.1.0",
+  "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4.0",
+  "pytest-asyncio>=0.21.0",
+  "pytest-cov>=4.1.0",
+]
+
+[project.scripts]
+agentbench = "agentbench.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agentbench = ["templates/*.html"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
