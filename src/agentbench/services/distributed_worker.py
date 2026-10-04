@@ -98,17 +98,15 @@ class DistributedWorkerService:
         if experiment.status == "completed":
             return None
         if experiment.status == "running":
-            active_modes: set[str] = {
-                str(mode)
-                for (mode,) in (
-                    self.db.query(ExperimentExecution.mode)
-                    .filter(
-                        ExperimentExecution.experiment_id == experiment.id,
-                        ExperimentExecution.status == "running",
-                    )
-                    .all()
+            active_mode_rows: list[Any] = (
+                self.db.query(ExperimentExecution.mode)
+                .filter(
+                    ExperimentExecution.experiment_id == experiment.id,
+                    ExperimentExecution.status == "running",
                 )
-            }
+                .all()
+            )
+            active_modes: set[str] = {str(row[0]) for row in active_mode_rows}
             active_worker_claims = (
                 self.db.query(ExperimentWorkerAttempt)
                 .filter(
