@@ -193,6 +193,11 @@ class SuiteService:
             agent_config_ids=bindings.selected_agent_config_ids,
             repetitions=definition.repetitions,
             stop_on_error=definition.stop_on_error,
+            budget=(
+                definition.budget.model_dump(mode="json", exclude_none=True)
+                if definition.budget is not None
+                else None
+            ),
             task_requirements={
                 bindings.task_ids[
                     resource_id
@@ -231,7 +236,7 @@ class SuiteService:
         tasks_by_id = {item.id: item for item in loaded.manifest.tasks}
         agents_by_id = {item.id: item for item in loaded.manifest.agents}
         return {
-            "report_schema_version": 7,
+            "report_schema_version": 8,
             "suite": {
                 "id": loaded.manifest.id,
                 "name": loaded.manifest.name,
@@ -252,6 +257,13 @@ class SuiteService:
                 "repetitions": experiment.repetitions,
                 "stop_on_error": experiment.stop_on_error,
                 "max_workers": loaded.manifest.experiment.max_workers,
+                "budget": (
+                    loaded.manifest.experiment.budget.model_dump(
+                        mode="json", exclude_none=True
+                    )
+                    if loaded.manifest.experiment.budget is not None
+                    else None
+                ),
                 "planned_runs": experiment.planned_runs,
             },
             "resources": {

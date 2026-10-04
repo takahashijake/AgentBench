@@ -199,7 +199,9 @@ class LocalParallelExperimentExecutor:
                             status="error",
                             error=f"{type(exc).__name__}: {exc}",
                         )
-                    if outcome.status == "error" and experiment.stop_on_error:
+                    if outcome.status == "budgeted_out":
+                        stop_scheduling = True
+                    elif outcome.status == "error" and experiment.stop_on_error:
                         stop_scheduling = True
                 submit_available(pool)
 

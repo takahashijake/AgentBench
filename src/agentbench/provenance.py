@@ -24,8 +24,8 @@ from . import __version__
 from .manifests import LoadedSuiteManifest
 
 
-LOCK_SCHEMA_VERSION = 4
-SUPPORTED_LOCK_SCHEMA_VERSIONS = frozenset({1, 2, 3, 4})
+LOCK_SCHEMA_VERSION = 5
+SUPPORTED_LOCK_SCHEMA_VERSIONS = frozenset({1, 2, 3, 4, 5})
 _VERSION_TIMEOUT_SECONDS = 3
 _MAX_VERSION_OUTPUT = 1000
 
@@ -224,6 +224,13 @@ def build_suite_lock(loaded: LoadedSuiteManifest) -> dict[str, Any]:
             "repetitions": loaded.manifest.experiment.repetitions,
             "stop_on_error": loaded.manifest.experiment.stop_on_error,
             "max_workers": loaded.manifest.experiment.max_workers,
+            "budget": (
+                loaded.manifest.experiment.budget.model_dump(
+                    mode="json", exclude_none=True
+                )
+                if loaded.manifest.experiment.budget is not None
+                else None
+            ),
         },
         "environment": environment_identity(),
     }

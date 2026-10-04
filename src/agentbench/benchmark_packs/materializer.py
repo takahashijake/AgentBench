@@ -178,7 +178,7 @@ class PackMaterializer:
             )
 
         manifest = {
-            "schema_version": 5,
+            "schema_version": 6,
             "id": f"agentbench-{pack.id}",
             "name": pack.name,
             "description": pack.description,

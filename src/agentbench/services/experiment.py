@@ -13,6 +13,7 @@ from ..models.database import (
     AgentConfig,
     BenchmarkTask,
     Experiment,
+    ExperimentBudget,
     ExperimentExecution,
     ExperimentTrial,
     ExperimentWorkerAttempt,
@@ -27,6 +28,7 @@ from ..statistics import (
 from ..resources import HostResourceInspector, TaskRequirements
 from ..timeutils import utc_now
 from .benchmark import BenchmarkService
+from .budget import ExperimentBudgetService
 
 
 @dataclass(frozen=True)
@@ -50,7 +52,7 @@ class ExperimentBusyError(RuntimeError):
 class ExperimentService:
     """Execute tasks × agents × repetitions using BenchmarkService."""
 
-    TERMINAL_TRIAL_STATUSES = {"completed", "error", "skipped"}
+    TERMINAL_TRIAL_STATUSES = {"completed", "error", "skipped", "budgeted_out"}
     MAX_PLANNED_RUNS = 10_000
 
     def __init__(
@@ -68,6 +70,7 @@ class ExperimentService:
                 "Injected BenchmarkService must use the same database session"
             )
         self.resource_inspector = resource_inspector or HostResourceInspector()
+        self.budgets = ExperimentBudgetService(db)
         self.benchmark_service = benchmark_service or BenchmarkService(
             db,
             artifact_root=artifact_root,
@@ -186,6 +189,7 @@ class ExperimentService:
         description: Optional[str] = None,
         stop_on_error: bool = False,
         task_requirements: Mapping[int, Mapping[str, Any]] | None = None,
+        budget: Mapping[str, Any] | None = None,
     ) -> Experiment:
         name = name.strip()
         if not name:
@@ -242,6 +246,8 @@ class ExperimentService:
                     )
 
         self.db.commit()
+        self.db.refresh(experiment)
+        self.budgets.create(int(experiment.id), budget)
         self.db.refresh(experiment)
         return experiment
 
@@ -370,6 +376,21 @@ class ExperimentService:
                     .one()
                 )
                 self._validate_trial_definition(experiment, task, agent)
+                budget_decision = self.budgets.reserve(
+                    int(experiment.id),
+                    int(trial.id),
+                )
+                if not budget_decision.allowed:
+                    trial.status = "budgeted_out"
+                    trial.error = (
+                        "Experiment budget prevented execution: "
+                        f"{budget_decision.reason}"
+                    )
+                    return TrialExecutionOutcome(
+                        trial_id=int(trial.id),
+                        status="budgeted_out",
+                        error=trial.error,
+                    )
                 run = self.benchmark_service.execute_benchmark(
                     task,
                     agent_config_id=trial.agent_config_id,
@@ -589,6 +610,8 @@ class ExperimentService:
         stopped_early = False
         for trial_id in pending_ids:
             outcome = self.execute_trial(trial_id)
+            if outcome.status == "budgeted_out":
+                break
             if outcome.status == "error" and experiment.stop_on_error:
                 stopped_early = True
                 break
@@ -644,7 +667,15 @@ class ExperimentService:
         errors = any(trial.status == "error" for trial in trials)
 
         if terminal:
-            experiment.status = "completed_with_errors" if errors else "completed"
+            budget = (
+                self.db.query(ExperimentBudget)
+                .filter(ExperimentBudget.experiment_id == experiment.id)
+                .one_or_none()
+            )
+            if budget is not None and budget.status == "exhausted":
+                experiment.status = "completed_budget_exhausted"
+            else:
+                experiment.status = "completed_with_errors" if errors else "completed"
             if experiment.completed_at is None:
                 experiment.completed_at = utc_now()
         else:
@@ -660,6 +691,9 @@ class ExperimentService:
         failed = [run for run in benchmark_runs if run.success is False]
         errors = [trial for trial in trials if trial.status == "error"]
         skipped = [trial for trial in trials if trial.status == "skipped"]
+        budgeted_out = [
+            trial for trial in trials if trial.status == "budgeted_out"
+        ]
         terminal_trials = sum(
             trial.status in ExperimentService.TERMINAL_TRIAL_STATUSES
             for trial in trials
@@ -685,7 +719,7 @@ class ExperimentService:
         insertion_summary = numeric_summary(insertions)
         deletion_summary = numeric_summary(deletions)
 
-        eligible_planned = planned - len(skipped)
+        eligible_planned = planned - len(skipped) - len(budgeted_out)
         success_rate = len(successful) / eligible_planned if eligible_planned else None
         benchmark_success_rate = (
             len(successful) / len(benchmark_runs) if benchmark_runs else None
@@ -698,6 +732,7 @@ class ExperimentService:
             "benchmark_runs": len(benchmark_runs),
             "orchestration_errors": len(errors),
             "skipped_runs": len(skipped),
+            "budgeted_out_runs": len(budgeted_out),
             "eligible_planned_runs": eligible_planned,
             "successful_runs": len(successful),
             "failed_runs": len(failed),
@@ -889,8 +924,10 @@ class ExperimentService:
             for item in registration_rows
         ]
 
+        budget_status = self.budgets.status(int(experiment.id))
+
         return {
-            "analysis_schema_version": 7,
+            "analysis_schema_version": 8,
             "experiment_id": experiment.id,
             "name": experiment.name,
             "status": experiment.status,
@@ -905,6 +942,7 @@ class ExperimentService:
             "worker_attempts": worker_attempts,
             "worker_summary": worker_summary,
             "worker_registrations": worker_registrations,
+            "budget": budget_status,
             "pairwise_task_comparison": build_pairwise_task_comparison(
                 by_cell_rows,
                 [int(agent_id) for agent_id in experiment.agent_config_ids],
