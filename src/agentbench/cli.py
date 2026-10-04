@@ -10,6 +10,8 @@ from typing import Any, Optional, Sequence
 
 from pydantic import ValidationError
 
+from . import __version__
+
 from .manifests import LoadedSuiteManifest, load_suite_manifest
 from .models.session import close_session, get_session, init_db
 from .provenance import (
