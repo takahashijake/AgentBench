@@ -106,9 +106,7 @@ def _portable_results(run: Any) -> dict[str, Any]:
     portable_cleanup = None
     if isinstance(cleanup, dict):
         portable_cleanup = {
-            key: value
-            for key, value in cleanup.items()
-            if "path" not in key.lower()
+            key: value for key, value in cleanup.items() if "path" not in key.lower()
         }
 
     artifact_prefix = f"artifacts/run-{int(run.id)}/"
@@ -171,9 +169,7 @@ def _portable_task_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "description": snapshot.get("description"),
         "base_commit": snapshot.get("base_commit"),
         "agent_prompt_sha256": (
-            _sha256_bytes(prompt.encode("utf-8"))
-            if isinstance(prompt, str)
-            else None
+            _sha256_bytes(prompt.encode("utf-8")) if isinstance(prompt, str) else None
         ),
         "setup_command": snapshot.get("setup_command"),
         "test_command": snapshot.get("test_command"),
@@ -189,9 +185,7 @@ def _portable_agent_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "name": snapshot.get("name"),
         "description": snapshot.get("description"),
         "command_template_sha256": (
-            _sha256_bytes(command.encode("utf-8"))
-            if isinstance(command, str)
-            else None
+            _sha256_bytes(command.encode("utf-8")) if isinstance(command, str) else None
         ),
         "enabled": snapshot.get("enabled"),
     }
@@ -247,9 +241,7 @@ class ResultBundleService:
             "stop_on_error": bool(experiment.stop_on_error),
             "planned_runs": int(experiment.planned_runs),
             "task_ids": [int(value) for value in experiment.task_ids],
-            "agent_config_ids": [
-                int(value) for value in experiment.agent_config_ids
-            ],
+            "agent_config_ids": [int(value) for value in experiment.agent_config_ids],
             "task_snapshots": [
                 _portable_task_snapshot(snapshot)
                 for snapshot in experiment.task_snapshots
@@ -430,7 +422,9 @@ def verify_result_bundle(path: str | Path) -> VerifiedResultBundle:
         try:
             report = json.loads(archive.read("report.json"))
         except (KeyError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise BundleValidationError("Result bundle lacks a valid report.json") from exc
+            raise BundleValidationError(
+                "Result bundle lacks a valid report.json"
+            ) from exc
         if not isinstance(report, dict):
             raise BundleValidationError("report.json root must be an object")
 

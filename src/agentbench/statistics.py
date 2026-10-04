@@ -19,12 +19,36 @@ _Z_95 = 1.959963984540054
 
 # Two-sided 95% Student-t critical values for degrees of freedom 1..30.
 _T_95 = {
-    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
-    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
-    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
-    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
-    21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
-    26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
+    1: 12.706,
+    2: 4.303,
+    3: 3.182,
+    4: 2.776,
+    5: 2.571,
+    6: 2.447,
+    7: 2.365,
+    8: 2.306,
+    9: 2.262,
+    10: 2.228,
+    11: 2.201,
+    12: 2.179,
+    13: 2.160,
+    14: 2.145,
+    15: 2.131,
+    16: 2.120,
+    17: 2.110,
+    18: 2.101,
+    19: 2.093,
+    20: 2.086,
+    21: 2.080,
+    22: 2.074,
+    23: 2.069,
+    24: 2.064,
+    25: 2.060,
+    26: 2.056,
+    27: 2.052,
+    28: 2.048,
+    29: 2.045,
+    30: 2.042,
 }
 
 
@@ -121,10 +145,9 @@ def build_agent_ranking(by_agent: list[dict[str, Any]]) -> dict[str, Any]:
         metrics = row.get("metrics", {}) or {}
         planned = int(metrics.get("planned_runs") or 0)
         successes = int(metrics.get("successful_runs") or 0)
-        interval = (
-            (metrics.get("statistics") or {}).get("success_rate_confidence_interval_95")
-            or wilson_interval(successes, planned)
-        )
+        interval = (metrics.get("statistics") or {}).get(
+            "success_rate_confidence_interval_95"
+        ) or wilson_interval(successes, planned)
         reliability = interval["low"] if interval else 0.0
         orchestration_errors = int(metrics.get("orchestration_errors") or 0)
         error_rate = orchestration_errors / planned if planned else 1.0
@@ -189,9 +212,7 @@ def exact_two_sided_sign_test(wins: int, losses: int) -> dict[str, Any] | None:
     if decisive == 0:
         return None
     tail = min(wins, losses)
-    probability = sum(
-        math.comb(decisive, k) for k in range(tail + 1)
-    ) / (2 ** decisive)
+    probability = sum(math.comb(decisive, k) for k in range(tail + 1)) / (2**decisive)
     return {
         "method": "exact_two_sided_sign_test",
         "p_value": min(1.0, 2.0 * probability),

@@ -150,7 +150,9 @@ def test_benchmark_service_accepts_injected_adapter_registry():
     db.commit()
     db.refresh(agent)
 
-    adapter = BenchmarkService(db, adapter_registry=registry).create_agent_adapter(agent.id)
+    adapter = BenchmarkService(db, adapter_registry=registry).create_agent_adapter(
+        agent.id
+    )
 
     assert isinstance(adapter, FakeAdapter)
     assert adapter.config["adapter"] == "python"
@@ -178,7 +180,6 @@ def test_adapter_registry_rejects_duplicate_registration():
 
     with pytest.raises(ValueError, match="already registered"):
         registry.register("x", lambda config: FakeAdapter(dict(config)))
-
 
 
 def test_injected_adapter_flows_through_experiment_and_suite_services(tmp_path: Path):

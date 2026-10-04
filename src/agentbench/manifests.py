@@ -116,10 +116,14 @@ class SuiteManifest(BaseModel):
         if not selected_tasks:
             raise ValueError("Experiment must select at least one enabled task")
 
-        unknown_agents = [item for item in selected_agents if item not in set(agent_ids)]
+        unknown_agents = [
+            item for item in selected_agents if item not in set(agent_ids)
+        ]
         unknown_tasks = [item for item in selected_tasks if item not in set(task_ids)]
         if unknown_agents:
-            raise ValueError(f"Experiment references unknown agent IDs: {unknown_agents}")
+            raise ValueError(
+                f"Experiment references unknown agent IDs: {unknown_agents}"
+            )
         if unknown_tasks:
             raise ValueError(f"Experiment references unknown task IDs: {unknown_tasks}")
 
@@ -149,9 +153,7 @@ class SuiteManifest(BaseModel):
             len(selected_agents) * len(selected_tasks) * self.experiment.repetitions
         )
         if planned_runs > 10_000:
-            raise ValueError(
-                f"Experiment plans {planned_runs} runs; maximum is 10000"
-            )
+            raise ValueError(f"Experiment plans {planned_runs} runs; maximum is 10000")
         return self
 
     def selected_agent_ids(self) -> list[str]:
@@ -162,8 +164,7 @@ class SuiteManifest(BaseModel):
 
     def selected_task_ids(self) -> list[str]:
         return list(
-            self.experiment.tasks
-            or [task.id for task in self.tasks if task.enabled]
+            self.experiment.tasks or [task.id for task in self.tasks if task.enabled]
         )
 
 

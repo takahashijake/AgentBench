@@ -18,8 +18,7 @@ def _instantiate(candidate: Any) -> BenchmarkPackProvider:
         candidate = candidate()
     if not isinstance(candidate, BenchmarkPackProvider):
         raise TypeError(
-            "entry point must resolve to an object implementing "
-            "provider_id and packs()"
+            "entry point must resolve to an object implementing provider_id and packs()"
         )
     return candidate
 

@@ -25,11 +25,9 @@ class BenchmarkPackProvider(Protocol):
     """Stable structural interface implemented by corpus providers."""
 
     @property
-    def provider_id(self) -> str:
-        ...
+    def provider_id(self) -> str: ...
 
-    def packs(self) -> tuple[BenchmarkPack, ...]:
-        ...
+    def packs(self) -> tuple[BenchmarkPack, ...]: ...
 
 
 @dataclass(frozen=True)

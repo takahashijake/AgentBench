@@ -71,9 +71,7 @@ def test_suite_lock_is_deterministic_and_resolves_exact_inputs(tmp_path: Path):
 def test_lock_round_trip_and_tamper_detection(tmp_path: Path):
     repo = tmp_path / "target"
     commit = init_git_repo(repo)
-    loaded = load_suite_manifest(
-        write_manifest(tmp_path / "suite.yaml", repo, commit)
-    )
+    loaded = load_suite_manifest(write_manifest(tmp_path / "suite.yaml", repo, commit))
     payload = build_suite_lock(loaded)
     lock_path = write_suite_lock(tmp_path / "suite.lock.json", payload)
 
@@ -104,14 +102,8 @@ def test_verify_reports_manifest_drift(tmp_path: Path):
 
     assert verification["valid"] is False
     assert verification["expected_identity_sha256"] == expected["identity_sha256"]
-    assert any(
-        row["path"] == "suite.manifest_sha256"
-        for row in verification["drift"]
-    )
-    assert any(
-        row["path"] == "tasks"
-        for row in verification["drift"]
-    )
+    assert any(row["path"] == "suite.manifest_sha256" for row in verification["drift"])
+    assert any(row["path"] == "tasks" for row in verification["drift"])
 
 
 def test_cli_lock_and_verify(tmp_path: Path, capsys):

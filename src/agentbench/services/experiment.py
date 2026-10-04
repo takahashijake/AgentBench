@@ -213,9 +213,7 @@ class ExperimentService:
 
     def get_experiment(self, experiment_id: int) -> Experiment:
         experiment = (
-            self.db.query(Experiment)
-            .filter(Experiment.id == experiment_id)
-            .first()
+            self.db.query(Experiment).filter(Experiment.id == experiment_id).first()
         )
         if experiment is None:
             raise ExperimentNotFoundError(f"Experiment not found: {experiment_id}")
@@ -327,9 +325,7 @@ class ExperimentService:
             experiment.status = "pending"
             return
 
-        terminal = all(
-            trial.status in self.TERMINAL_TRIAL_STATUSES for trial in trials
-        )
+        terminal = all(trial.status in self.TERMINAL_TRIAL_STATUSES for trial in trials)
         errors = any(trial.status == "error" for trial in trials)
 
         if terminal:
@@ -342,7 +338,9 @@ class ExperimentService:
     @staticmethod
     def _aggregate_trials(trials: list[ExperimentTrial]) -> dict[str, Any]:
         planned = len(trials)
-        benchmark_runs = [trial.benchmark_run for trial in trials if trial.benchmark_run]
+        benchmark_runs = [
+            trial.benchmark_run for trial in trials if trial.benchmark_run
+        ]
         successful = [run for run in benchmark_runs if run.success is True]
         failed = [run for run in benchmark_runs if run.success is False]
         errors = [trial for trial in trials if trial.status == "error"]
@@ -468,9 +466,7 @@ class ExperimentService:
             {
                 "task_id": task_id,
                 "task_name": (
-                    tasks[task_id]["name"]
-                    if task_id in tasks
-                    else f"task-{task_id}"
+                    tasks[task_id]["name"] if task_id in tasks else f"task-{task_id}"
                 ),
                 "metrics": self._aggregate_trials(by_task[task_id]),
             }
@@ -480,9 +476,7 @@ class ExperimentService:
             {
                 "task_id": task_id,
                 "task_name": (
-                    tasks[task_id]["name"]
-                    if task_id in tasks
-                    else f"task-{task_id}"
+                    tasks[task_id]["name"] if task_id in tasks else f"task-{task_id}"
                 ),
                 "agent_config_id": agent_id,
                 "agent_name": (
@@ -512,4 +506,3 @@ class ExperimentService:
                 [int(agent_id) for agent_id in experiment.agent_config_ids],
             ),
         }
-

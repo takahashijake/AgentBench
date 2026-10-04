@@ -8,7 +8,15 @@ from .database import (
     Experiment,
     ExperimentTrial,
 )
-from .session import DATABASE_URL, Session, close_session, engine, get_session, init_db, reset_db
+from .session import (
+    DATABASE_URL,
+    Session,
+    close_session,
+    engine,
+    get_session,
+    init_db,
+    reset_db,
+)
 
 __all__ = [
     "Base",

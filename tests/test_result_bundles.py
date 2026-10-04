@@ -31,7 +31,9 @@ def make_bundle_session(tmp_path: Path):
     Base.metadata.create_all(bind=engine)
     db = sessionmaker(bind=engine)()
 
-    agent = AgentConfig(name="bundle-agent", command_template="python agent.py {prompt}")
+    agent = AgentConfig(
+        name="bundle-agent", command_template="python agent.py {prompt}"
+    )
     db.add(agent)
     db.flush()
 
@@ -177,13 +179,9 @@ def test_bundle_extract_verifies_before_writing(tmp_path: Path):
     assert result["extracted"] is True
     assert (destination / "bundle.json").is_file()
     assert (destination / "report.json").is_file()
-    assert (
-        destination
-        / "artifacts"
-        / "run-1"
-        / "git"
-        / "diff.patch"
-    ).read_text(encoding="utf-8") == "+fixed\n"
+    assert (destination / "artifacts" / "run-1" / "git" / "diff.patch").read_text(
+        encoding="utf-8"
+    ) == "+fixed\n"
 
 
 def test_bundle_verifier_rejects_duplicate_or_tampered_payload(tmp_path: Path):

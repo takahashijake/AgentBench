@@ -77,10 +77,30 @@ def test_ranking_prefers_conservative_reliability_over_raw_small_sample_rate():
 
 def test_pairwise_comparison_keeps_equal_quality_as_tie():
     cells = [
-        {"task_id": 1, "agent_config_id": 1, "agent_name": "a", "metrics": {"success_rate": 1.0}},
-        {"task_id": 1, "agent_config_id": 2, "agent_name": "b", "metrics": {"success_rate": 0.0}},
-        {"task_id": 2, "agent_config_id": 1, "agent_name": "a", "metrics": {"success_rate": 0.5}},
-        {"task_id": 2, "agent_config_id": 2, "agent_name": "b", "metrics": {"success_rate": 0.5}},
+        {
+            "task_id": 1,
+            "agent_config_id": 1,
+            "agent_name": "a",
+            "metrics": {"success_rate": 1.0},
+        },
+        {
+            "task_id": 1,
+            "agent_config_id": 2,
+            "agent_name": "b",
+            "metrics": {"success_rate": 0.0},
+        },
+        {
+            "task_id": 2,
+            "agent_config_id": 1,
+            "agent_name": "a",
+            "metrics": {"success_rate": 0.5},
+        },
+        {
+            "task_id": 2,
+            "agent_config_id": 2,
+            "agent_name": "b",
+            "metrics": {"success_rate": 0.5},
+        },
     ]
 
     comparison = build_pairwise_task_comparison(cells, [1, 2])[0]
@@ -90,7 +110,6 @@ def test_pairwise_comparison_keeps_equal_quality_as_tie():
     assert comparison["right_task_wins"] == 0
     assert comparison["ties"] == 1
     assert comparison["left_decisive_win_rate"] == 1.0
-
 
 
 def test_exact_sign_test_is_exact_and_excludes_ties():

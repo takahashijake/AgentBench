@@ -121,7 +121,9 @@ def extract_usage_metadata(stdout: str, stderr: str = "") -> dict[str, Any]:
         counters["total_tokens"] = total
 
     return {
-        "source": "structured_json_output" if counters or cost_usd is not None else None,
+        "source": "structured_json_output"
+        if counters or cost_usd is not None
+        else None,
         "structured_events_scanned": len(objects),
         "prompt_tokens": prompt,
         "completion_tokens": completion,
