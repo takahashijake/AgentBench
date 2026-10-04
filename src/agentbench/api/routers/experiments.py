@@ -162,3 +162,13 @@ def recover_expired_workers(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/api/experiments/{experiment_id}/workers/queue")
+def get_worker_queue(experiment_id: int, db: Session = Depends(get_db)):
+    try:
+        return DistributedWorkerService(db).queue_status(experiment_id)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

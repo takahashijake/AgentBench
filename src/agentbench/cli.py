@@ -285,6 +285,25 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     worker_subparsers = worker.add_subparsers(dest="worker_command", required=True)
 
+    worker_register = worker_subparsers.add_parser(
+        "register",
+        help="Register this host's normalized capabilities for scheduling.",
+    )
+    worker_register.add_argument("experiment_id", type=int)
+    worker_register.add_argument("--owner", required=True)
+    worker_register.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="Optional scheduling label to advertise. Repeat as needed.",
+    )
+
+    worker_queue = worker_subparsers.add_parser(
+        "queue",
+        help="Inspect planned work and capability matches.",
+    )
+    worker_queue.add_argument("experiment_id", type=int)
+
     worker_run = worker_subparsers.add_parser(
         "run",
         help="Claim and execute available trials with durable leases.",
@@ -478,6 +497,23 @@ def _run_database_command(args: argparse.Namespace) -> int:
                 db,
                 experiment_service=service.experiments,
             )
+            if args.worker_command == "register":
+                capabilities = workers.register_worker(
+                    args.owner,
+                    experiment_id=args.experiment_id,
+                    labels=tuple(args.label),
+                )
+                _write_json(
+                    {
+                        "experiment_id": args.experiment_id,
+                        "owner_id": args.owner,
+                        "capabilities": capabilities.as_dict(),
+                    }
+                )
+                return 0
+            if args.worker_command == "queue":
+                _write_json(workers.queue_status(args.experiment_id))
+                return 0
             if args.worker_command == "run":
                 _write_json(
                     workers.run_worker(

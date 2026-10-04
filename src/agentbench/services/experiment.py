@@ -16,6 +16,7 @@ from ..models.database import (
     ExperimentExecution,
     ExperimentTrial,
     ExperimentWorkerAttempt,
+    WorkerRegistration,
 )
 from ..statistics import (
     build_agent_ranking,
@@ -870,9 +871,27 @@ class ExperimentService:
                 for status in sorted({item.status for item in worker_rows})
             },
         }
+        registration_rows = (
+            self.db.query(WorkerRegistration)
+            .filter(WorkerRegistration.status == "active")
+            .order_by(WorkerRegistration.owner_id.asc())
+            .all()
+        )
+        worker_registrations = [
+            {
+                "owner_id": item.owner_id,
+                "status": item.status,
+                "capabilities": dict(item.capabilities or {}),
+                "metadata": dict(item.metadata_json or {}),
+                "registered_at": item.registered_at.isoformat(),
+                "heartbeat_at": item.heartbeat_at.isoformat(),
+            }
+            for item in registration_rows
+        ]
+
 
         return {
-            "analysis_schema_version": 6,
+            "analysis_schema_version": 7,
             "experiment_id": experiment.id,
             "name": experiment.name,
             "status": experiment.status,
@@ -886,6 +905,7 @@ class ExperimentService:
             "latest_execution": execution_history[-1] if execution_history else None,
             "worker_attempts": worker_attempts,
             "worker_summary": worker_summary,
+            "worker_registrations": worker_registrations,
             "pairwise_task_comparison": build_pairwise_task_comparison(
                 by_cell_rows,
                 [int(agent_id) for agent_id in experiment.agent_config_ids],
