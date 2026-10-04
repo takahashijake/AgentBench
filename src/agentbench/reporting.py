@@ -51,12 +51,12 @@ def render_markdown_report(report: dict[str, Any]) -> str:
         f"- **Tests failed:** {_number(overall.get('tests_failed'))}",
     ]
 
-    runtime = overall.get("runtime", {}) or {}
+    runtime = overall.get("runtime_seconds", {}) or {}
     if runtime:
         lines.extend(
             [
-                f"- **Average runtime:** {_number(runtime.get('average_seconds'))} s",
-                f"- **Total runtime:** {_number(runtime.get('total_seconds'))} s",
+                f"- **Average runtime:** {_number(runtime.get('average'))} s",
+                f"- **Total runtime:** {_number(runtime.get('total'))} s",
             ]
         )
 
@@ -85,7 +85,7 @@ def render_markdown_report(report: dict[str, Any]) -> str:
         )
         for row in by_agent:
             metrics = row.get("metrics", {}) or {}
-            agent_runtime = metrics.get("runtime", {}) or {}
+            agent_runtime = metrics.get("runtime_seconds", {}) or {}
             changes = metrics.get("changes", {}) or {}
             lines.append(
                 "| {agent} | {success} | {runs} | {runtime} s | {tests} | {files} |".format(
