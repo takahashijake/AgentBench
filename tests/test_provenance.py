@@ -65,7 +65,7 @@ def test_suite_lock_is_deterministic_and_resolves_exact_inputs(tmp_path: Path):
     assert first["tasks"][0]["resolved_base_commit"] == commit
     assert first["agents"][0]["executable"]["command"]
     assert first["agents"][0]["executable"]["binary_sha256"]
-    assert first["environment"]["agentbench_version"] == "8.0.0"
+    assert first["environment"]["agentbench_version"] == "9.0.0"
 
 
 def test_lock_round_trip_and_tamper_detection(tmp_path: Path):

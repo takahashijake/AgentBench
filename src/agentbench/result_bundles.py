@@ -37,6 +37,7 @@ class VerifiedResultBundle:
     path: Path
     manifest: dict[str, Any]
     report: dict[str, Any]
+    experiment: dict[str, Any]
 
     @property
     def identity_sha256(self) -> str:
@@ -467,7 +468,21 @@ def verify_result_bundle(path: str | Path) -> VerifiedResultBundle:
         if not isinstance(report, dict):
             raise BundleValidationError("report.json root must be an object")
 
-    return VerifiedResultBundle(path=source, manifest=manifest, report=report)
+        try:
+            experiment = json.loads(archive.read("experiment.json"))
+        except (KeyError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise BundleValidationError(
+                "Result bundle lacks a valid experiment.json"
+            ) from exc
+        if not isinstance(experiment, dict):
+            raise BundleValidationError("experiment.json root must be an object")
+
+    return VerifiedResultBundle(
+        path=source,
+        manifest=manifest,
+        report=report,
+        experiment=experiment,
+    )
 
 
 def inspect_result_bundle(path: str | Path) -> dict[str, Any]:
@@ -478,6 +493,7 @@ def inspect_result_bundle(path: str | Path) -> dict[str, Any]:
         "identity_sha256": verified.identity_sha256,
         "manifest": verified.manifest,
         "report": verified.report,
+        "experiment": verified.experiment,
     }
 
 

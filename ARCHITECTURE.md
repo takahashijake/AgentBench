@@ -1,4 +1,4 @@
-# AgentBench V8 Architecture
+# AgentBench V9 Architecture
 
 AgentBench V4 is organized around two invariants:
 
@@ -572,3 +572,28 @@ identity, exact file set, sizes, and SHA-256 digests.
 
 This separation makes the web presentation disposable while the bundle remains
 the archival evidence object.
+
+
+## V9 regression-analysis boundary
+
+**Path:** `src/agentbench/regression.py`
+
+Regression comparison operates only on verified portable result bundles.
+
+```text
+baseline bundle ──verify──┐
+                          ├── compatibility → metric deltas → policy gate
+candidate bundle ─verify──┘
+```
+
+The comparator does not query the live database and does not trust local task
+IDs. Benchmark compatibility is derived from the portable task snapshots already
+inside each result bundle.
+
+The task fingerprint excludes local IDs and agent command identity so an agent
+implementation can change while the benchmark itself remains fixed. Agent rows
+are aligned by logical agent name.
+
+A gate failure is returned as measured policy data. The CLI maps that outcome to
+exit code 4 rather than throwing an exception; malformed/incompatible evidence
+remains an input error.

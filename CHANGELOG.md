@@ -1,5 +1,33 @@
 # Changelog
 
+## 9.0.0 — Continuous-evaluation Regression Gates
+
+### Comparison
+
+- compare two verified result bundles as baseline and candidate evidence
+- require identical portable task definitions and repetition counts before
+  computing deltas
+- align logical agents by name and reject missing/added agent sets
+- expose a deterministic task fingerprint for the compared benchmark
+
+### Gate policy
+
+- threshold eligible success-rate drop
+- threshold Wilson-lower-bound reliability drop
+- threshold orchestration-error-rate increase
+- optionally threshold median-runtime increase ratio
+- gate policy failures return exit code 4, distinct from invalid input,
+  readiness mismatch, or reproducibility drift
+
+### Product surface
+
+- `agentbench regression compare <baseline> <candidate>`
+- `agentbench regression gate <baseline> <candidate> [thresholds]`
+- verified result bundles now expose parsed portable experiment metadata through
+  the internal verification contract
+- AgentBench package/API version 9.0.0
+
+
 ## 8.0.0 — Verifiable Static Evidence Publication
 
 ### Publication

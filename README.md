@@ -1,4 +1,4 @@
-# AgentBench V8
+# AgentBench V9
 
 **Extensible, reproducible evaluation infrastructure for coding agents.**
 
@@ -11,6 +11,45 @@ verified portable result bundle.
 V3 is primarily a **software-engineering release**. The goal is not to add more
 conditionals to a benchmark runner; it is to make AgentBench safe to extend.
 
+
+## V9 continuous-evaluation regression gates
+
+V9 turns verified result bundles into CI-ready baselines.
+
+A regression comparison only proceeds when baseline and candidate bundles have
+the same portable task definitions, repetition count, and logical agent names.
+This prevents a benchmark change from being misreported as an agent regression.
+
+```bash
+agentbench regression compare \
+  results/baseline.zip \
+  results/candidate.zip \
+  -o results/comparison.json
+```
+
+Enforce explicit tolerances:
+
+```bash
+agentbench regression gate \
+  results/baseline.zip \
+  results/candidate.zip \
+  --max-success-drop 0.02 \
+  --max-reliability-drop 0.03 \
+  --max-error-rate-increase 0.01 \
+  --max-runtime-increase-ratio 0.20
+```
+
+The gate evaluates each logical agent on:
+
+- eligible success-rate change
+- lower bound of the 95% Wilson success interval ("reliability")
+- orchestration-error-rate change
+- optional median-runtime ratio
+
+Exit code `0` means the policy passed. Exit code `4` means valid,
+compatible evidence exceeded a configured regression threshold. Invalid bundles
+or incompatible benchmark definitions remain ordinary input errors instead of
+being conflated with a quality regression.
 
 ## V8 verifiable static publication
 
@@ -450,6 +489,9 @@ agentbench bundle extract <file.zip> -o <directory>
 agentbench publish experiment <experiment-id> -o <directory>
 agentbench publish bundle <file.zip> -o <directory>
 agentbench publish verify <directory>
+
+agentbench regression compare <baseline.zip> <candidate.zip>
+agentbench regression gate <baseline.zip> <candidate.zip> [thresholds...]
 
 agentbench serve
 ```
