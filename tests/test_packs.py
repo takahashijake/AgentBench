@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shlex
 import subprocess
+import sys
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -176,3 +178,59 @@ def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
         "bugfix",
         "feature",
     }
+
+
+
+def test_smoke_pack_executes_end_to_end_through_canonical_services(tmp_path: Path):
+    solver_code = """
+from pathlib import Path
+duration = Path("duration.py")
+if duration.exists():
+    duration.write_text(
+        duration.read_text(encoding="utf-8").replace('"ms": 1.0', '"ms": 0.001'),
+        encoding="utf-8",
+    )
+else:
+    Path("slug.py").write_text(
+        'import re\\n\\ndef slugify(text: str) -> str:\\n'
+        '    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")\\n',
+        encoding="utf-8",
+    )
+""".strip()
+    solver = {
+        "id": "deterministic-solver",
+        "description": "test-only fixture agent",
+        "command_template": (
+            shlex.join([sys.executable, "-c", solver_code]) + " {prompt}"
+        ),
+    }
+    materialized = materialize_pack(
+        "smoke-v2",
+        tmp_path / "executable-pack",
+        agents=[solver],
+        repetitions=1,
+    )
+    loaded = load_suite_manifest(materialized["manifest_path"])
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    db = sessionmaker(bind=engine)()
+    service = SuiteService(
+        db,
+        artifact_root=tmp_path / "execution-artifacts",
+        setup_timeout=2,
+        test_timeout=5,
+    )
+
+    imported, experiment, summary = service.execute_suite(loaded)
+
+    assert experiment.status == "completed"
+    assert summary["overall"]["planned_runs"] == 2
+    assert summary["overall"]["successful_runs"] == 2
+    assert summary["overall"]["tests_passed"] == 10
+    assert summary["overall"]["orchestration_errors"] == 0
+    assert summary["ranking"]["entries"][0]["agent_name"].endswith(
+        "/deterministic-solver"
+    )
+    assert summary["ranking"]["entries"][0]["success_rate"] == 1.0
+    assert len(imported.task_ids) == 2
