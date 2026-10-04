@@ -21,7 +21,7 @@ format-check:
 	$(PYTHON) -m ruff format --check src tests
 
 typecheck:
-	$(PYTHON) -m mypy src/agentbench/manifests.py src/agentbench/statistics.py src/agentbench/benchmark_packs/models.py src/agentbench/adapters/base.py src/agentbench/resources.py src/agentbench/services/local_executor.py src/agentbench/services/distributed_worker.py
+	$(PYTHON) -m mypy src/agentbench/manifests.py src/agentbench/statistics.py src/agentbench/benchmark_packs/models.py src/agentbench/adapters/base.py src/agentbench/resources.py src/agentbench/services/local_executor.py src/agentbench/services/distributed_worker.py src/agentbench/publication.py
 
 docs:
 	mkdocs build --strict

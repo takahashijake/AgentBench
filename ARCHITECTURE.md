@@ -1,4 +1,4 @@
-# AgentBench V7 Architecture
+# AgentBench V8 Architecture
 
 AgentBench V4 is organized around two invariants:
 
@@ -540,3 +540,35 @@ eligible registered owners per planned cell and reports unmatched work.
 Portable evidence intentionally does not export raw worker owner IDs. Local
 operational analysis retains them; result bundles expose a SHA-256 identity
 instead.
+
+
+## V8 publication boundary
+
+**Path:** `src/agentbench/publication.py`
+
+Static publication is deliberately downstream of result-bundle verification.
+
+```text
+ExperimentService
+      │
+      ▼
+ResultBundleService
+      │
+      ▼
+verified bundle
+      │
+      ▼
+publication renderer + manifest
+```
+
+The publication layer does not query benchmark tables, execute experiments, read
+host-local artifact paths directly, or invent a second portability projection.
+Direct experiment publication is implemented by producing the normal result
+bundle first.
+
+A publication is a small content-addressed directory containing `index.html`,
+`report.json`, and `publication.json`. The verifier checks the manifest
+identity, exact file set, sizes, and SHA-256 digests.
+
+This separation makes the web presentation disposable while the bundle remains
+the archival evidence object.

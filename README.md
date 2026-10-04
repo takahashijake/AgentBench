@@ -1,4 +1,4 @@
-# AgentBench V7
+# AgentBench V8
 
 **Extensible, reproducible evaluation infrastructure for coding agents.**
 
@@ -11,6 +11,40 @@ verified portable result bundle.
 V3 is primarily a **software-engineering release**. The goal is not to add more
 conditionals to a benchmark runner; it is to make AgentBench safe to extend.
 
+
+## V8 verifiable static publication
+
+V8 turns AgentBench evidence into a portfolio-ready static report that can be
+opened directly or hosted on GitHub Pages, S3, Netlify, or any static web server.
+
+The important design choice is that publication is **downstream of verified
+result-bundle semantics**. A static site is not a second source of truth.
+
+```bash
+agentbench bundle export 42 -o results/experiment-42.zip
+agentbench publish bundle results/experiment-42.zip -o public/experiment-42
+agentbench publish verify public/experiment-42
+```
+
+You can also publish directly from a persisted experiment:
+
+```bash
+agentbench publish experiment 42 -o public/experiment-42
+```
+
+Each publication contains:
+
+- `index.html` — dependency-free portfolio presentation
+- `report.json` — machine-readable canonical report
+- `publication.json` — content-addressed publication manifest
+
+The publication manifest records the verified source-bundle identity and hashes
+every static payload. Verification rejects tampering, missing files, and
+undeclared payloads.
+
+Generated HTML has no external JavaScript, fonts, analytics, or network
+dependencies, and inherits the result bundle's privacy projection instead of
+reintroducing host-local repository paths or raw agent commands.
 
 ## V7 capability-aware heterogeneous scheduling
 
@@ -412,6 +446,10 @@ agentbench bundle export <experiment-id> -o <file.zip>
 agentbench bundle verify <file.zip>
 agentbench bundle inspect <file.zip>
 agentbench bundle extract <file.zip> -o <directory>
+
+agentbench publish experiment <experiment-id> -o <directory>
+agentbench publish bundle <file.zip> -o <directory>
+agentbench publish verify <directory>
 
 agentbench serve
 ```
