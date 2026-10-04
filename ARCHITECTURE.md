@@ -1,343 +1,421 @@
-# AgentBench V2 Architecture
+# AgentBench V3 Architecture
 
-AgentBench is organized around one invariant:
+AgentBench V3 is organized around two invariants:
 
-> **A ranking is only as credible as the corpus identity, execution evidence, and
-> measurement semantics underneath it.**
+> **Evaluation claims must be traceable to reproducible evidence.**
 
-V2 therefore adds corpus and statistical layers **above** the hardened V1
-execution core rather than replacing that core.
+> **New capabilities must enter through explicit extension boundaries rather than
+> increasing coupling in the orchestration core.**
 
-## End-to-end product flow
+V3 keeps the hardened V1 execution lifecycle and V2 statistical semantics, then
+restructures extension points around dependency inversion, composition roots, and
+portable contracts.
+
+## Dependency direction
+
+The intended dependency flow is:
 
 ```text
-Built-in pack / custom suite
-          │
-          ├── materialize deterministic Git fixtures
-          ▼
-   schema-v1/v2 manifest
-          │
-          ├── canonical manifest hash
-          ├── provenance resolution
-          ▼
-      suite lock ───────────────► verify / replay gate
-          │
-          ▼
-      SuiteService
-          ▼
-   ExperimentService
-          │
-          ├── tasks × agents × repetitions
-          ├── frozen definitions
-          ▼
-    BenchmarkService
-          │
-          ├── detached worktree
-          ├── bounded setup
-          ├── bounded agent
-          ├── pre-test Git evidence
-          ├── bounded tests
-          └── immutable run bundle
-          ▼
-    BenchmarkRun rows
-          │
-          ▼
-     statistics.py
-          │
-          ├── Wilson success intervals
-          ├── Student-t numeric summaries
-          ├── conservative ranking
-          └── pairwise task outcomes
-          ▼
- JSON / Markdown / API / local UI
+transport / composition
+  CLI            FastAPI routers
+   │                  │
+   └────────┬─────────┘
+            ▼
+       workflow services
+   Suite → Experiment → Benchmark
+            │              │
+            │              ▼
+            │        adapter abstraction
+            │              ▲
+            │              │
+            │        adapter registry
+            │
+            ▼
+   persisted canonical data
+            │
+      ┌─────┴────────┐
+      ▼              ▼
+ statistics      result bundles
+      │              │
+      └──────┬───────┘
+             ▼
+        presentation
+
+benchmark-pack provider protocol
+             │
+             ▼
+       pack registry
+             │
+             ▼
+       materializer
+             │
+             ▼
+       suite manifest
 ```
 
-## 1. Benchmark corpus
+The provider protocol does not own I/O. Statistics does not know about services.
+Reporting does not execute benchmarks. Transport code composes services but does
+not reimplement their semantics.
 
-**Path:** `src/agentbench/packs.py`
+## Composition roots
 
-Owns:
+There are two primary composition roots.
 
-- built-in pack catalog
-- task fixture source definitions
-- deterministic Git materialization
-- generated schema-v2 suite manifests
-- pack-specific corpus metadata
-- CLI agent-definition parsing
+### CLI
 
-It does not execute agents or write database rows.
+`src/agentbench/cli.py` parses arguments and composes domain/services. Expensive
+or security-sensitive logic lives in dedicated modules such as
+`result_bundles.py`, `provenance.py`, and the service layer.
 
-The current built-in packs are:
+### FastAPI
 
-- `smoke-v2`
-- `core-v2`
+`src/agentbench/api/app.py` exposes `create_app()` and includes focused routers:
 
-Task repositories are committed with fixed content, identity, timestamps, and
-message so corpus commits can be reproduced across workspaces.
+- `routers/system.py`
+- `routers/pages.py`
+- `routers/resources.py`
+- `routers/runs.py`
+- `routers/experiments.py`
+
+`api/__init__.py` remains a thin compatibility/composition surface.
+
+## 1. Benchmark-pack domain
+
+**Paths:**
+
+- `src/agentbench/benchmark_packs/models.py`
+- `src/agentbench/benchmark_packs/provider.py`
+- `src/agentbench/benchmark_packs/discovery.py`
+- `src/agentbench/benchmark_packs/materializer.py`
+- `src/agentbench/benchmark_packs/builtin.py`
+
+### Domain models
+
+`BenchmarkPack` and `PackTaskSpec` are immutable dataclasses. They validate
+stable IDs, task files, timeouts, and duplicate definitions.
+
+They contain description, not behavior.
+
+### Provider SPI
+
+`BenchmarkPackProvider` is a structural protocol:
+
+```python
+class BenchmarkPackProvider(Protocol):
+    @property
+    def provider_id(self) -> str: ...
+    def packs(self) -> tuple[BenchmarkPack, ...]: ...
+```
+
+`PackRegistry` owns global pack-ID uniqueness and provider identity.
+
+The provider contract must not import filesystem/Git/process concerns.
+
+### Optional discovery
+
+Third-party providers may register through the Python entry-point group:
+
+```text
+agentbench.pack_providers
+```
+
+Discovery is a fault boundary: a broken optional plugin is reported in
+`discovery_errors` but does not remove built-in packs.
+
+### Materialization
+
+`PackMaterializer` owns:
+
+- output-directory validation
+- deterministic fixture file creation
+- Git initialization/commit identity
+- generated schema-3 manifest creation
+
+Provider code does not receive filesystem responsibilities.
+
+### Compatibility façade
+
+`src/agentbench/packs.py` preserves V2 imports while delegating to the new package.
 
 ## 2. Manifest layer
 
 **Path:** `src/agentbench/manifests.py`
 
-Owns:
+Responsibilities:
 
-- schema-v1/v2 YAML/JSON validation
-- corpus metadata
-- task category/difficulty/tags
-- task/agent selection
+- schema-v1/v2/v3 YAML/JSON validation
+- resource identity and selection
 - relative repository-path resolution
-- canonical manifest SHA-256
+- canonical manifest serialization/hash
+- pack ID/version/provider metadata
 
-It does not touch persistence or execute processes.
+Generated V3 manifests use schema 3. Older schemas remain readable.
 
-## 3. Provenance and replay
+## 3. Provenance and suite locks
 
 **Path:** `src/agentbench/provenance.py`
 
-Owns bounded reproducibility identity:
+New V3 locks use lock schema 2. Lock schema 1 remains readable so historical V2
+artifacts can be diagnosed and compared.
 
-- suite schema and manifest digest
-- benchmark-pack identity
+Locks capture bounded material inputs:
+
+- suite schema + canonical manifest digest
+- pack ID/version/provider
 - exact resolved task commits
 - prompt digests
-- execution commands/timeouts
-- task corpus metadata
+- task execution commands/timeouts
 - selected matrix/repetitions
-- agent command template
-- resolved executable/version/binary SHA-256
+- agent command definition
+- executable name/version/binary hash
 - AgentBench/Python/platform/Git identity
 
-The lock excludes secrets and indiscriminate environment snapshots.
+They deliberately avoid credentials and indiscriminate environment dumps.
 
-Replay fails closed on material drift.
+Replay remains fail-closed on drift.
 
-## 4. Suite workflow
+## 4. Adapter port and registry
 
-**Path:** `src/agentbench/services/suite.py`
+**Paths:**
 
-Owns:
+- `src/agentbench/adapters/base.py`
+- `src/agentbench/adapters/registry.py`
+- `src/agentbench/adapters/shell.py`
 
-- stable resource identities
-- idempotent task/agent imports
-- manifest-to-database binding
-- experiment creation through `ExperimentService`
-- suite execution composition
-- schema-v2 report envelope construction
+`AgentAdapter` is the execution port consumed by benchmark orchestration.
 
-It does not bypass the experiment or benchmark service.
+`AdapterRegistry` maps stable adapter/executable identities to factories.
+`BenchmarkService` depends on the registry, not on a concrete shell adapter.
 
-## 5. Experiment orchestration
+The generic shell implementation exposes `process_result()` through the abstract
+adapter contract, eliminating concrete `isinstance` checks in orchestration.
+
+The default Codex/Qwen/Claude/Gemini entries currently select the hardened
+shell-backed execution implementation. V3 does not label them as native adapters.
+A future native adapter can replace a factory registration without changing
+`BenchmarkService`.
+
+## 5. Dependency injection through workflows
+
+### BenchmarkService
+
+Accepts an optional `AdapterRegistry`.
+
+### ExperimentService
+
+Accepts an optional `BenchmarkService`. An injected service must share the same
+SQLAlchemy session.
+
+### SuiteService
+
+Accepts an optional `ExperimentService`, with the same session invariant.
+
+This means a custom adapter is usable through the normal
+suite → experiment → benchmark product path, not only through an isolated unit
+test.
+
+Cross-session dependency injection is rejected because mixing persistence units
+of work would make transaction semantics ambiguous.
+
+## 6. Benchmark execution
+
+**Path:** `src/agentbench/services/benchmark.py`
+
+Owns exactly one benchmark lifecycle:
+
+1. resolve task/agent state
+2. verify source Git repository
+3. allocate write-once artifacts
+4. capture bounded run provenance
+5. create detached worktree at pinned commit
+6. run optional bounded setup
+7. construct adapter through registry
+8. run bounded agent process
+9. capture Git evidence **before tests**
+10. run bounded tests
+11. force-clean/remove worktree
+12. persist one canonical `BenchmarkRun`
+
+No benchmark-pack provider or HTTP router bypasses this lifecycle.
+
+## 7. Experiment orchestration
 
 **Path:** `src/agentbench/services/experiment.py`
 
 Owns:
 
-- deterministic `tasks × agents × repetitions` planning
-- persisted `ExperimentTrial` cells
+- deterministic tasks × agents × repetitions planning
 - frozen task/agent snapshots
+- trial state transitions
+- idempotency of terminal cells
 - definition-drift rejection
-- idempotent terminal states
-- orchestration-error separation
-- persisted-data aggregation
-- delegation of one cell to `BenchmarkService`
+- orchestration error separation
+- delegation of each cell to `BenchmarkService`
+- aggregation from canonical persisted data
 
-V2 aggregation additionally feeds observed measurements into the statistics
-layer.
+Analysis schema 3 adds paired comparison information but leaves ranking semantics
+explicit and deterministic.
 
-## 6. Statistical analysis
+## 8. Suite workflow
+
+**Path:** `src/agentbench/services/suite.py`
+
+Owns:
+
+- stable imported resource names
+- idempotent task/agent upsert
+- manifest-to-persistence binding
+- experiment creation/execution composition
+- report envelope construction
+
+It does not parse adapter executables or create benchmark runs directly.
+
+## 9. Statistical analysis
 
 **Path:** `src/agentbench/statistics.py`
 
-Owns presentation-independent analysis:
+This is a presentation-independent analysis module.
 
-- 95% Wilson score intervals for binomial success
-- numeric measurement summaries
+It owns:
+
+- Wilson success intervals
+- numeric summaries
 - Student-t mean intervals
-- conservative agent ranking
-- pairwise task comparison
+- conservative lower-Wilson ranking
+- task-level pairwise win/loss/tie counts
+- paired mean success-rate difference
+- exact two-sided sign test over decisive tasks
 
-The ranking algorithm is deterministic and self-described in result data.
+The sign test is reported as descriptive evidence and does not influence rank.
 
-It does not execute benchmarks or mutate persisted measurements.
+Statistics does not depend on database models, services, API, or CLI modules.
 
-## 7. Benchmark execution
+## 10. Portable result bundles
 
-**Path:** `src/agentbench/services/benchmark.py`
+**Path:** `src/agentbench/result_bundles.py`
 
-Owns exactly one trial lifecycle:
+Result bundles are a local service boundary, not an HTTP transport concern.
 
-1. validate task/agent state
-2. verify source repository
-3. allocate write-once artifact storage
-4. capture bounded provenance
-5. create detached worktree at the exact task commit
-6. execute optional bounded setup
-7. execute the coding agent
-8. capture Git evidence before tests
-9. execute bounded tests
-10. force-clean worktree
-11. persist one `BenchmarkRun`
+Export produces a deterministic ZIP with:
 
-V2 also persists structured token usage emitted by the adapter.
+- `bundle.json`
+- `report.json`
+- `report.md`
+- portable `experiment.json`
+- immutable run artifacts
 
-## 8. Agent adapters
+The bundle manifest authenticates every payload with size + SHA-256 and has its
+own canonical identity digest.
 
-**Paths:** `src/agentbench/adapters/`
+Portability rules remove host-local:
 
-The current shell adapter:
+- repository paths
+- worktree paths
+- artifact-store paths
+- raw command templates from portable snapshots
 
-- parses command templates with `shlex`
-- inserts prompts as argv values
-- delegates lifecycle to bounded process execution
-- records process metadata
-- detects common agent families
-- invokes structured usage extraction
+Artifact references become logical paths inside the bundle.
 
-Future native adapters belong here.
+Verification happens before extraction. Path traversal, duplicate members,
+undeclared payloads, digest mismatches, and oversized archives are rejected.
 
-## 9. Structured usage
+## 11. API architecture
 
-**Path:** `src/agentbench/usage.py`
+The HTTP layer is deliberately split by concern. Routers perform:
 
-Owns conservative telemetry extraction from complete JSON/JSONL output events.
+- request/response translation
+- persistence dependency acquisition
+- HTTP error mapping
+- service composition
 
-Recognized semantics include input/prompt tokens, output/completion tokens, total
-tokens, cached input, and reported USD cost.
+They do not own benchmark semantics.
 
-Arbitrary prose numbers are ignored.
+Filesystem result-bundle export remains CLI/local-service functionality rather
+than being exposed as an arbitrary server-side file operation.
 
-## 10. Execution, Git, evidence, artifacts
+## 12. Architecture QA
 
-**Paths:**
+**Path:** `tests/test_architecture.py`
 
-- `src/agentbench/execution/`
-- `src/agentbench/utils/git.py`
-- `src/agentbench/evidence.py`
-- `src/agentbench/artifacts.py`
+Architecture tests assert structural rules such as:
 
-These V1 layers remain intentionally stable.
+- `BenchmarkService` does not import `adapters.shell`
+- provider contracts do not import materialization dependencies
+- statistics/reporting do not depend on orchestration services/models
+- `api/__init__.py` stays thin
+- result-bundle code does not depend on CLI/API transport
 
-They own process groups/timeouts, worktree lifecycle, pre-test evidence capture,
-untracked-file preservation, and immutable run storage.
+Behavioral extension tests additionally verify:
 
-## 11. Persistence
+- third-party provider registration
+- global pack-ID collision rejection
+- optional plugin failure isolation
+- custom adapter factory injection
+- injection through experiment/suite workflows
+- cross-session injection rejection
 
-**Paths:** `src/agentbench/models/`, `src/agentbench/schemas/`
+This converts architectural intent into executable regression protection.
 
-Core entities remain:
+## 13. Schema evolution policy
 
-```text
-AgentConfig
-BenchmarkTask
-BenchmarkRun
-Experiment
-ExperimentTrial
-```
+V3 distinguishes independent persisted/public formats:
 
-Token columns on `BenchmarkRun` now receive structured measurements when
-available.
+- suite manifest schema: **3**
+- analysis schema: **3**
+- suite report schema: **3**
+- suite lock schema: **2**
+- result-bundle schema: **1**
 
-Statistical summaries are derived from canonical persisted trials/runs and are
-not stored as competing source-of-truth rows.
+Schema versions change when compatibility expectations change; they are not tied
+mechanically to the AgentBench package version.
 
-## 12. Reporting
-
-**Path:** `src/agentbench/reporting.py`
-
-Owns Markdown presentation only.
-
-V2 reports display:
-
-- corpus identity
-- success uncertainty
-- runtime/token measurements
-- reliability leaderboard
-- pairwise task outcomes
-- methodology and interpretation limits
-- reproducibility identity
-
-## 13. API / local UI
-
-**Path:** `src/agentbench/api/`
-
-The local application exposes:
-
-- run-level evidence
-- experiment lists
-- experiment leaderboard views
-- built-in pack metadata
-- JSON experiment results
-- JSON leaderboard results
-- OpenAPI documentation
-
-It does not implement benchmark semantics independently.
-
-## 14. CLI
-
-**Path:** `src/agentbench/cli.py`
-
-V2 product commands:
-
-```text
-pack list
-pack show
-pack materialize
-validate
-doctor
-serve
-lock
-verify
-import
-run
-replay
-results
-leaderboard
-```
+Readers should remain backward-compatible where doing so is safe and explicit.
+Writers emit the current schema.
 
 ## Integrity invariants
 
-V2 is incomplete if any of these fail:
+V3 is incomplete if any of these regress:
 
-1. Source repositories remain unchanged by benchmark execution.
-2. Agents execute only in isolated worktrees.
-3. Worktrees resolve to the intended base commit.
-4. Tests cannot overwrite captured agent evidence.
-5. Non-ignored untracked agent files survive cleanup.
-6. Setup/agent/test processes remain bounded.
-7. Timeout cleanup terminates the normal child process tree.
-8. Artifact directories remain unique and write-once.
-9. Dirty worktrees are removed and stale registrations are pruned.
-10. Experiment execution still calls `BenchmarkService`.
-11. Benchmark failure remains data, not an orchestration error.
-12. Terminal trials are not silently rerun.
-13. Historical aggregation uses frozen definitions.
-14. Definition drift is rejected before trial execution.
-15. Parallel duplicate execution is blocked.
-16. Suite imports remain stable/idempotent.
-17. Lock identity remains canonical and tamper-evident.
-18. Replay detects changed manifest/commit/executable/bounded environment.
-19. Every new run persists bounded provenance.
-20. Pack task commits are deterministic for a given pack version.
-21. Missing token telemetry is not counted as zero.
-22. Statistical analysis derives only from canonical observed trial data.
-23. Ranking rules are deterministic and disclosed.
-24. Pairwise quality ties remain ties.
-25. Reporting remains presentation-only.
+1. source repositories remain unchanged by trials
+2. trial workspaces are isolated
+3. pinned commits are exact
+4. process execution is bounded
+5. agent evidence is captured before tests
+6. non-ignored untracked files survive as evidence
+7. artifacts are unique/write-once
+8. worktree cleanup is forced and stale metadata pruned
+9. benchmark failure remains measurement data
+10. orchestration failures remain distinct
+11. experiment definitions are frozen
+12. terminal trials are not silently rerun
+13. definition drift is rejected
+14. suite imports remain stable/idempotent
+15. lock identity is canonical and tamper-evident
+16. replay rejects material drift
+17. optional provider failure cannot disable built-ins
+18. provider IDs and pack IDs are collision-safe
+19. benchmark orchestration does not depend on concrete adapters
+20. injected workflow services share one DB session
+21. missing telemetry remains missing rather than zero
+22. statistical rank rules remain disclosed
+23. pairwise ties remain ties
+24. sign-test results do not silently affect rank
+25. result bundles verify contents before extraction
+26. result bundles reject unsafe paths
+27. portable metadata excludes host-local paths
+28. HTTP transport does not own local bundle filesystem operations
 
-## V2 completion boundary
+## Post-V3 direction
 
-V2 is a release when:
+V4 should build on these seams rather than widen central services. High-value
+directions include:
 
-- package version is 2.0.0
-- built-in packs materialize deterministically
-- schema-v1 and schema-v2 manifests both validate
-- pack metadata participates in provenance
-- repeated-trial summaries expose uncertainty
-- leaderboard and pairwise results are available through CLI/API/UI
-- structured usage can populate canonical token columns
-- Markdown reports explain methodology and limitations
-- CI exercises pack → validate → lock → verify
-- full QA passes on supported Python versions
+- genuinely native family-specific adapters with typed telemetry contracts
+- larger external benchmark providers distributed as separate packages
+- static/shareable report publication from verified result bundles
+- stronger corpus compatibility/version policy
+- richer paired analysis where assumptions are defensible
+- explicit persistence repository interfaces if storage backends need to diversify
 
-Post-V2 development should expand corpus scale and comparison sophistication
-without weakening these invariants.
+Distributed workers, cloud control planes, and hosted SaaS are still lower
+priority than deepening the local evaluation product.
