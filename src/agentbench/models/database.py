@@ -145,6 +145,12 @@ class Experiment(Base):
         cascade="all, delete-orphan",
         order_by="ExperimentWorkerAttempt.id",
     )
+    budget = relationship(
+        "ExperimentBudget",
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class ExperimentExecution(Base):
@@ -166,6 +172,57 @@ class ExperimentExecution(Base):
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     experiment = relationship("Experiment", back_populates="executions")
+
+
+class ExperimentBudget(Base):
+    """Durable scheduling budget and aggregate reservation state."""
+
+    __tablename__ = "experiment_budgets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    experiment_id = Column(
+        Integer, ForeignKey("experiments.id"), nullable=False, unique=True, index=True
+    )
+    policy = Column(JSON, nullable=False)
+    status = Column(String(64), nullable=False, default="active", index=True)
+    reserved_trials = Column(Integer, nullable=False, default=0)
+    exhaustion_reason = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    exhausted_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    experiment = relationship("Experiment", back_populates="budget")
+    reservations = relationship(
+        "ExperimentBudgetReservation",
+        back_populates="budget",
+        cascade="all, delete-orphan",
+        order_by="ExperimentBudgetReservation.id",
+    )
+
+
+class ExperimentBudgetReservation(Base):
+    """One conservative budget slot consumed before agent execution."""
+
+    __tablename__ = "experiment_budget_reservations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    budget_id = Column(
+        Integer, ForeignKey("experiment_budgets.id"), nullable=False, index=True
+    )
+    trial_id = Column(
+        Integer,
+        ForeignKey("experiment_trials.id"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    reserved_at = Column(DateTime, nullable=False, default=utc_now)
+    details = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+
+    budget = relationship("ExperimentBudget", back_populates="reservations")
+    trial = relationship("ExperimentTrial")
 
 
 class WorkerRegistration(Base):

@@ -93,6 +93,31 @@ class ManifestTask(BaseModel):
     )
 
 
+class ManifestExperimentBudget(BaseModel):
+    """Optional scheduling guardrails for a benchmark experiment."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_started_trials: Optional[int] = Field(default=None, ge=1, le=10000)
+    max_wall_seconds: Optional[int] = Field(default=None, ge=1, le=604800)
+    max_total_tokens: Optional[int] = Field(default=None, ge=1)
+    max_orchestration_errors: Optional[int] = Field(default=None, ge=1, le=10000)
+
+    @model_validator(mode="after")
+    def require_at_least_one_limit(self) -> "ManifestExperimentBudget":
+        if all(
+            value is None
+            for value in (
+                self.max_started_trials,
+                self.max_wall_seconds,
+                self.max_total_tokens,
+                self.max_orchestration_errors,
+            )
+        ):
+            raise ValueError("budget must define at least one limit")
+        return self
+
+
 class ManifestExperiment(BaseModel):
     """Experiment dimensions selected from the manifest resources."""
 
@@ -105,6 +130,7 @@ class ManifestExperiment(BaseModel):
     repetitions: int = Field(default=1, ge=1, le=100)
     stop_on_error: bool = False
     max_workers: int = Field(default=1, ge=1, le=32)
+    budget: Optional[ManifestExperimentBudget] = None
 
 
 class SuiteManifest(BaseModel):
@@ -123,7 +149,7 @@ class SuiteManifest(BaseModel):
 
     @model_validator(mode="after")
     def validate_manifest(self) -> "SuiteManifest":
-        if self.schema_version not in {1, 2, 3, 4, 5}:
+        if self.schema_version not in {1, 2, 3, 4, 5, 6}:
             raise ValueError(
                 f"Unsupported suite manifest schema_version: {self.schema_version}"
             )
@@ -249,6 +275,7 @@ __all__ = [
     "ManifestAgent",
     "ManifestBenchmarkPack",
     "ManifestExperiment",
+    "ManifestExperimentBudget",
     "ManifestTask",
     "ManifestTaskRequirements",
     "SuiteManifest",
