@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import socket
 import threading
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -89,7 +89,8 @@ class DistributedWorkerService:
     def _required_commands(self, experiment_id: int) -> tuple[str, ...]:
         experiment = self.experiments.get_experiment(experiment_id)
         commands: set[str] = set()
-        for snapshot in experiment.task_snapshots:
+        snapshots = cast(list[dict[str, Any]], experiment.task_snapshots)
+        for snapshot in snapshots:
             requirements = TaskRequirements.from_mapping(snapshot.get("requirements"))
             commands.update(requirements.required_commands)
         return tuple(sorted(commands))
@@ -184,7 +185,8 @@ class DistributedWorkerService:
         experiment: Experiment,
         task_id: int,
     ) -> TaskRequirements:
-        snapshots = self.experiments._snapshots_by_id(list(experiment.task_snapshots))
+        raw_snapshots = cast(list[dict[str, Any]], experiment.task_snapshots)
+        snapshots = self.experiments._snapshots_by_id(raw_snapshots)
         return TaskRequirements.from_mapping(
             snapshots.get(int(task_id), {}).get("requirements")
         )
