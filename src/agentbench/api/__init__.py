@@ -9,6 +9,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
+from .. import __version__
+
 from ..models import (
     AgentConfig as AgentConfigModel,
     BenchmarkRun as BenchmarkRunModel,
@@ -37,9 +39,9 @@ from ..services.experiment import (
     ExperimentService,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-STATIC_DIR = PROJECT_ROOT / "static"
-TEMPLATES_DIR = PROJECT_ROOT / "templates"
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
+STATIC_DIR = PACKAGE_ROOT / "static"
+TEMPLATES_DIR = PACKAGE_ROOT / "templates"
 
 
 @asynccontextmanager
@@ -51,7 +53,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AgentBench Local",
     description="A local-first benchmarking platform for coding agents",
-    version="0.3.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -67,6 +69,11 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "version": __version__}
 
 
 @app.get("/", response_class=HTMLResponse)

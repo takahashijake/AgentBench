@@ -1,0 +1,38 @@
+schema_version: 1
+id: agentbench-qwen-vs-codex
+name: AgentBench self-hosted coding-agent comparison
+description: >
+  Portfolio demo suite that runs Qwen and Codex against the same historical
+  AgentBench commit, using the same task prompt, tests, timeout, and repetitions.
+
+agents:
+  - id: qwen-local
+    description: Local Qwen coding agent
+    command_template: qwen -p "{prompt}"
+
+  - id: codex
+    description: OpenAI Codex CLI
+    command_template: codex exec "{prompt}"
+
+tasks:
+  - id: add-about-command
+    description: Add a bounded CLI feature while preserving all existing behavior.
+    repository_path: ..
+    base_commit: 392c1ab51bdbd6af4b78018f81d2bb034a347cbe
+    agent_prompt: |
+      Add an `about` subcommand to the AgentBench CLI.
+
+      Requirements:
+      - `agentbench about` must emit machine-readable JSON.
+      - Include the AgentBench version and a short product description.
+      - Do not weaken or remove existing tests.
+      - Add focused regression coverage for the new command.
+      - Keep the implementation inside the existing CLI/product boundaries.
+    test_command: PYTHONPATH=src pytest -q
+    timeout: 600
+
+experiment:
+  tasks: [add-about-command]
+  agents: [qwen-local, codex]
+  repetitions: 3
+  stop_on_error: false
