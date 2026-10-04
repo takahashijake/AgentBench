@@ -71,6 +71,11 @@ def get_db():
         db.close()
 
 
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "version": __version__}
+
+
 @app.get("/", response_class=HTMLResponse)
 def root(request: Request):
     return templates.TemplateResponse(
