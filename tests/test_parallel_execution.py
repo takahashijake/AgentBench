@@ -16,7 +16,7 @@ from agentbench.models.database import (
     ExperimentExecution,
     ExperimentTrial,
 )
-from agentbench.services.experiment import ExperimentService
+from agentbench.services.experiment import ExperimentBusyError, ExperimentService
 
 from helpers import init_git_repo
 
@@ -217,3 +217,45 @@ def test_parallel_stop_on_error_finishes_inflight_but_stops_new_work(tmp_path: P
     )
     assert attempts[-1].status == "failed"
     assert attempts[-1].max_workers == 2
+
+
+def test_experiment_lease_rejects_second_coordinator_and_recovery_clears_it(
+    tmp_path: Path,
+):
+    db = make_file_session(tmp_path)
+    repo = tmp_path / "lease-repo"
+    commit = init_git_repo(repo)
+    agent = add_agent(db, "lease-agent", "pass")
+    task = add_task(db, "lease-task", repo, commit)
+    service = ExperimentService(db, artifact_root=tmp_path / "artifacts")
+    experiment = service.create_experiment(
+        name="lease",
+        task_ids=[task.id],
+        agent_config_ids=[agent.id],
+    )
+
+    claimed = service._claim_experiment_for_execution(experiment)
+    attempt = service._start_execution_attempt(
+        claimed.id,
+        mode="local_parallel",
+        max_workers=2,
+    )
+
+    second_db = sessionmaker(bind=db.get_bind())()
+    try:
+        second = ExperimentService(
+            second_db,
+            artifact_root=tmp_path / "artifacts-2",
+        )
+        with pytest.raises(ExperimentBusyError, match="active execution"):
+            second.execute_experiment(experiment.id, max_workers=1)
+    finally:
+        second_db.close()
+
+    assert service.recover_running_trials(experiment.id) == 0
+    db.refresh(experiment)
+    db.refresh(attempt)
+    assert experiment.status == "pending"
+    assert attempt.status == "interrupted"
+    assert attempt.details["recovered_experiment_lease"] is True
+    assert attempt.details["recovered_running_trials"] == 0

@@ -148,14 +148,13 @@ class LocalParallelExperimentExecutor:
             for trial_id, task_id in pending
         ]
 
+        experiment = self.coordinator._claim_experiment_for_execution(experiment)
         attempt = self.coordinator._start_execution_attempt(
             experiment.id,
             mode="local_parallel",
             max_workers=max_workers,
             details={"planned_for_attempt": len(work_items)},
         )
-
-        experiment = self.coordinator._claim_experiment_for_execution(experiment)
 
         next_index = 0
         stop_scheduling = False

@@ -437,7 +437,8 @@ class ExperimentService:
                 synchronize_session=False,
             )
         )
-        if recovered:
+        was_running = experiment.status == "running"
+        if recovered or was_running:
             now = utc_now()
             experiment.status = "pending"
             experiment.completed_at = None
@@ -454,6 +455,7 @@ class ExperimentService:
                 attempt.completed_at = now
                 details = dict(attempt.details or {})
                 details["recovered_running_trials"] = int(recovered)
+                details["recovered_experiment_lease"] = bool(was_running)
                 attempt.details = details
         self.db.commit()
         self.db.refresh(experiment)
@@ -509,13 +511,12 @@ class ExperimentService:
             self.db.refresh(experiment)
             return experiment
 
+        experiment = self._claim_experiment_for_execution(experiment)
         attempt = self._start_execution_attempt(
             experiment.id,
             mode="sequential",
             max_workers=1,
         )
-
-        experiment = self._claim_experiment_for_execution(experiment)
 
         stopped_early = False
         for trial_id in pending_ids:
