@@ -11,6 +11,7 @@ from typing import Any, Optional, Sequence
 from pydantic import ValidationError
 
 from . import __version__
+from .campaigns import load_campaign_manifest, validate_campaign
 from .manifests import LoadedSuiteManifest, load_suite_manifest
 from .models.session import close_session, get_session, init_db
 from .packs import (
@@ -40,7 +41,11 @@ from .regression import (
     compare_bundles,
     gate_bundles,
 )
-from .reporting import render_leaderboard_markdown, render_markdown_report
+from .reporting import (
+    render_campaign_markdown,
+    render_leaderboard_markdown,
+    render_markdown_report,
+)
 from .result_bundles import (
     BundleValidationError,
     ResultBundleService,
@@ -48,6 +53,7 @@ from .result_bundles import (
     inspect_result_bundle,
     verify_result_bundle,
 )
+from .services.campaign import CampaignNotFoundError, CampaignService
 from .services.distributed_worker import DistributedWorkerService
 from .services.experiment import ExperimentBusyError, ExperimentNotFoundError
 from .services.suite import SuiteService
@@ -449,6 +455,34 @@ def _build_parser() -> argparse.ArgumentParser:
         default=0.0,
     )
     regression_gate.add_argument("--max-runtime-increase-ratio", type=float)
+
+    campaign = subparsers.add_parser(
+        "campaign",
+        help="Validate, run, and report multi-suite benchmark campaigns.",
+    )
+    campaign_subparsers = campaign.add_subparsers(
+        dest="campaign_command",
+        required=True,
+    )
+    campaign_validate = campaign_subparsers.add_parser(
+        "validate",
+        help="Verify every campaign member suite and lock without executing work.",
+    )
+    campaign_validate.add_argument("manifest")
+
+    campaign_run = campaign_subparsers.add_parser(
+        "run",
+        help="Execute a fully verified locked-suite campaign.",
+    )
+    campaign_run.add_argument("manifest")
+    _add_report_outputs(campaign_run)
+
+    campaign_report = campaign_subparsers.add_parser(
+        "report",
+        help="Export the persisted report for a campaign ID.",
+    )
+    campaign_report.add_argument("campaign_id", type=int)
+    _add_report_outputs(campaign_report)
     return parser
 
 
@@ -625,6 +659,27 @@ def _run_database_command(args: argparse.Namespace) -> int:
             )
             return 0
 
+        if args.command == "campaign":
+            campaigns = CampaignService(db)
+            if args.campaign_command == "run":
+                loaded = load_campaign_manifest(args.manifest)
+                campaign = campaigns.run_campaign(loaded)
+                report = campaigns.build_report(int(campaign.id))
+                _write_markdown_text(
+                    render_campaign_markdown(report),
+                    args.markdown,
+                )
+                _write_json(report, args.output)
+                return 0 if campaign.status == "completed" else 5
+            if args.campaign_command == "report":
+                report = campaigns.build_report(args.campaign_id)
+                _write_markdown_text(
+                    render_campaign_markdown(report),
+                    args.markdown,
+                )
+                _write_json(report, args.output)
+                return 0
+
         if args.command == "results":
             report = _experiment_report(service, args.experiment_id)
             _write_markdown(report, args.markdown)
@@ -713,6 +768,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload = preflight_suite(loaded)
             _write_json(payload)
             return 0 if payload["ready"] else 3
+
+        if args.command == "campaign" and args.campaign_command == "validate":
+            loaded = load_campaign_manifest(args.manifest)
+            _write_json(validate_campaign(loaded))
+            return 0
 
         if args.command == "validate":
             loaded = load_suite_manifest(args.manifest)
@@ -834,6 +894,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         BundleValidationError,
         PublicationValidationError,
         RegressionComparisonError,
+        CampaignNotFoundError,
     ) as exc:
         print(
             json.dumps(
