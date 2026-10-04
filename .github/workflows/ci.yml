@@ -20,8 +20,25 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e ".[dev]"
-      - name: CLI smoke test
+
+      - name: Installed CLI smoke test
         run: |
+          agentbench --version
           agentbench --help
           agentbench doctor
+          agentbench pack list
+          agentbench pack show core-v2
+
+      - name: V2 benchmark-pack reproducibility smoke
+        run: |
+          agentbench pack materialize smoke-v2 \
+            --output /tmp/agentbench-smoke-v2 \
+            --agent 'fixture=python -c "print(1)" {prompt}' \
+            --repetitions 2
+          agentbench validate /tmp/agentbench-smoke-v2/suite.yaml
+          agentbench lock /tmp/agentbench-smoke-v2/suite.yaml \
+            --output /tmp/agentbench-smoke-v2/suite.lock.json
+          agentbench verify /tmp/agentbench-smoke-v2/suite.yaml \
+            /tmp/agentbench-smoke-v2/suite.lock.json
+
       - run: pytest
