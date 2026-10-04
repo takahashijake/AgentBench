@@ -92,7 +92,7 @@ def render_markdown_report(report: dict[str, Any]) -> str:
                     agent=row.get("agent_name", row.get("agent_config_id", "unknown")),
                     success=_pct(metrics.get("success_rate")),
                     runs=_number(metrics.get("benchmark_runs")),
-                    runtime=_number(agent_runtime.get("average_seconds")),
+                    runtime=_number(agent_runtime.get("average")),
                     tests=_number(metrics.get("tests_passed")),
                     files=_number(changes.get("files_changed_total")),
                 )
