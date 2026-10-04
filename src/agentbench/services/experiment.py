@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
@@ -15,6 +14,7 @@ from ..models.database import (
     Experiment,
     ExperimentTrial,
 )
+from ..timeutils import utc_now
 from .benchmark import BenchmarkService
 
 
@@ -242,7 +242,7 @@ class ExperimentService:
             return experiment
 
         if experiment.started_at is None:
-            experiment.started_at = datetime.utcnow()
+            experiment.started_at = utc_now()
         if experiment.status == "failed":
             experiment.completed_at = None
         experiment.status = "running"
@@ -251,7 +251,7 @@ class ExperimentService:
         stopped_early = False
         for trial in pending:
             trial.status = "running"
-            trial.started_at = datetime.utcnow()
+            trial.started_at = utc_now()
             trial.error = None
             self.db.commit()
 
@@ -279,7 +279,7 @@ class ExperimentService:
                 if experiment.stop_on_error:
                     stopped_early = True
             finally:
-                trial.completed_at = datetime.utcnow()
+                trial.completed_at = utc_now()
                 self.db.commit()
 
             if stopped_early:
@@ -296,7 +296,7 @@ class ExperimentService:
             )
             if remaining:
                 experiment.status = "failed"
-                experiment.completed_at = datetime.utcnow()
+                experiment.completed_at = utc_now()
             else:
                 self._finalize_status(experiment)
         else:
@@ -324,7 +324,7 @@ class ExperimentService:
         if terminal:
             experiment.status = "completed_with_errors" if errors else "completed"
             if experiment.completed_at is None:
-                experiment.completed_at = datetime.utcnow()
+                experiment.completed_at = utc_now()
         else:
             experiment.status = "running"
 

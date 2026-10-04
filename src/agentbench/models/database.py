@@ -1,7 +1,5 @@
 """Database models for AgentBench."""
 
-from datetime import datetime
-
 from sqlalchemy import (
     Boolean,
     Column,
@@ -15,6 +13,8 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
+
+from ..timeutils import utc_now
 
 
 class Base(DeclarativeBase):
@@ -31,8 +31,8 @@ class AgentConfig(Base):
     description = Column(Text, nullable=True)
     command_template = Column(Text, nullable=False, default="qwen -p {prompt}")
     enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     benchmark_tasks = relationship("BenchmarkTask", back_populates="agent_config")
     benchmark_runs = relationship("BenchmarkRun", back_populates="agent_config")
@@ -53,8 +53,8 @@ class BenchmarkTask(Base):
     test_command = Column(String(1024), nullable=False, default="pytest")
     timeout = Column(Integer, default=300)
     enabled = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     agent_config_id = Column(Integer, ForeignKey("agent_configs.id"), nullable=True)
     agent_config = relationship("AgentConfig", back_populates="benchmark_tasks")
@@ -102,8 +102,8 @@ class BenchmarkRun(Base):
     completion_tokens = Column(Integer, nullable=True)
     total_tokens = Column(Integer, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
 
 class Experiment(Base):
@@ -124,8 +124,8 @@ class Experiment(Base):
     planned_runs = Column(Integer, nullable=False, default=0)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     trials = relationship(
         "ExperimentTrial",
@@ -170,8 +170,8 @@ class ExperimentTrial(Base):
     error = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     experiment = relationship("Experiment", back_populates="trials")
     task = relationship("BenchmarkTask")

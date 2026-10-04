@@ -14,7 +14,6 @@ from __future__ import annotations
 import re
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -26,6 +25,7 @@ from ..artifacts import RunArtifactStore
 from ..evidence import capture_git_evidence
 from ..execution import ProcessResult, run_shell_command
 from ..models.database import AgentConfig, BenchmarkRun, BenchmarkTask
+from ..timeutils import utc_now
 from ..utils.git import (
     cleanup_git_worktree,
     create_git_worktree,
@@ -254,7 +254,7 @@ class BenchmarkService:
         if not task.enabled:
             raise ValueError(f"Benchmark task is disabled: {task.id}")
 
-        started_at = datetime.utcnow()
+        started_at = utc_now()
         requested_agent_config_id = (
             agent_config_id if agent_config_id is not None else task.agent_config_id
         )
@@ -413,7 +413,7 @@ class BenchmarkService:
 
             artifact_store.write_json("cleanup.json", cleanup_report)
 
-        ended_at = datetime.utcnow()
+        ended_at = utc_now()
         duration = (ended_at - started_at).total_seconds()
 
         setup_failed = (
