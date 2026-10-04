@@ -6,8 +6,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
-from .models import get_session, AgentConfig, BenchmarkTask, BenchmarkRun
-from .schemas import (
+from ..models import get_session, AgentConfig, BenchmarkTask, BenchmarkRun
+from ..schemas import (
     AgentConfigCreate,
     AgentConfig,
     BenchmarkTaskCreate,
@@ -16,7 +16,7 @@ from .schemas import (
     BenchmarkRun,
     BenchmarkRunList,
 )
-from .services.benchmark import BenchmarkService
+from ..services.benchmark import BenchmarkService
 
 app = FastAPI(
     title="AgentBench Local",

@@ -10,8 +10,8 @@ from typing import Optional, Dict, Any, Tuple
 
 from sqlalchemy.orm import Session
 
-from .adapters.base import AgentAdapter, ShellAgentAdapter
-from .models.database import BenchmarkRun, BenchmarkTask, AgentConfig
+from ..adapters.base import AgentAdapter, ShellAgentAdapter
+from ..models.database import BenchmarkRun, BenchmarkTask, AgentConfig
 
 
 class BenchmarkService:
