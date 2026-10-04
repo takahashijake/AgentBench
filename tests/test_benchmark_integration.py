@@ -82,7 +82,7 @@ def test_full_benchmark_isolated_preserves_agent_file_and_cleans_worktree(tmp_pa
     assert (artifact_dir / "manifest.json").is_file()
     assert (artifact_dir / "agent" / "stdout.log").is_file()
     assert (artifact_dir / "provenance.json").is_file()
-    assert run.results["provenance"]["environment"]["agentbench_version"] == "1.0.0"
+    assert run.results["provenance"]["environment"]["agentbench_version"] == "2.0.0"
     assert run.results["provenance"]["agent_executable"]["binary_sha256"]
     assert (artifact_dir / "git" / "untracked" / "created.txt").read_text(
         encoding="utf-8"
