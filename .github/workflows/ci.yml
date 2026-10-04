@@ -96,6 +96,7 @@ jobs:
         run: |
           agentbench pack materialize smoke-v2             --output /tmp/agentbench-smoke-v3             --agent 'fixture=python -c "print(1)" {prompt}'             --repetitions 2
           agentbench validate /tmp/agentbench-smoke-v3/suite.yaml
+          agentbench preflight /tmp/agentbench-smoke-v3/suite.yaml
           agentbench lock /tmp/agentbench-smoke-v3/suite.yaml             --output /tmp/agentbench-smoke-v3/suite.lock.json
           agentbench verify /tmp/agentbench-smoke-v3/suite.yaml             /tmp/agentbench-smoke-v3/suite.lock.json
 

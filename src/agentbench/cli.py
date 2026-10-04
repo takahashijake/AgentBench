@@ -20,6 +20,7 @@ from .packs import (
     parse_agent_spec,
     preflight_pack,
 )
+from .preflight import preflight_suite
 from .provenance import (
     build_suite_lock,
     environment_identity,
@@ -171,6 +172,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Repeated trials per task/agent cell (default: 5).",
     )
+
+    preflight = subparsers.add_parser(
+        "preflight",
+        help="Check a materialized suite host, repositories, and agent executables.",
+    )
+    preflight.add_argument("manifest")
 
     validate = subparsers.add_parser(
         "validate",
@@ -447,6 +454,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         if args.command == "pack":
             return _run_pack_command(args)
+
+        if args.command == "preflight":
+            loaded = load_suite_manifest(args.manifest)
+            payload = preflight_suite(loaded)
+            _write_json(payload)
+            return 0 if payload["ready"] else 3
 
         if args.command == "validate":
             loaded = load_suite_manifest(args.manifest)

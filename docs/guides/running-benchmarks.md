@@ -14,6 +14,7 @@ agentbench pack materialize core-v3 \
   --repetitions 5
 
 agentbench validate ./benchmarks/core-v3/suite.yaml
+agentbench preflight ./benchmarks/core-v3/suite.yaml
 agentbench lock ./benchmarks/core-v3/suite.yaml -o ./benchmarks/core-v3/suite.lock.json
 agentbench verify ./benchmarks/core-v3/suite.yaml ./benchmarks/core-v3/suite.lock.json
 agentbench replay ./benchmarks/core-v3/suite.yaml ./benchmarks/core-v3/suite.lock.json \
