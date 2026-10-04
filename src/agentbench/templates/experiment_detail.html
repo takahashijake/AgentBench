@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ experiment.name }} · AgentBench V2</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-body-tertiary">
+<nav class="navbar navbar-dark bg-dark"><div class="container">
+  <a class="navbar-brand" href="/">AgentBench V2</a>
+  <div class="d-flex gap-3"><a class="text-white text-decoration-none" href="/experiments">Experiments</a><a class="text-white text-decoration-none" href="/dashboard">Runs</a></div>
+</div></nav>
+<main class="container py-5">
+  <div class="mb-4">
+    <div class="d-flex justify-content-between align-items-start">
+      <div><h1 class="h2 mb-1">{{ experiment.name }}</h1><p class="text-secondary mb-0">Experiment #{{ experiment.id }} · {{ experiment.planned_runs }} planned runs · {{ experiment.repetitions }} repetitions</p></div>
+      <span class="badge text-bg-dark fs-6">{{ experiment.status }}</span>
+    </div>
+  </div>
+
+  {% set overall = summary.overall %}
+  {% set overall_ci = overall.statistics.success_rate_confidence_interval_95 if overall.statistics else none %}
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-secondary small">Success rate</div><div class="fs-3 fw-semibold">{{ '%.1f'|format((overall.success_rate or 0) * 100) }}%</div>{% if overall_ci %}<div class="small text-secondary">95% CI {{ '%.1f'|format(overall_ci.low * 100) }}–{{ '%.1f'|format(overall_ci.high * 100) }}%</div>{% endif %}</div></div></div>
+    <div class="col-md-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-secondary small">Completed</div><div class="fs-3 fw-semibold">{{ overall.terminal_trials }}/{{ overall.planned_runs }}</div><div class="small text-secondary">{{ overall.orchestration_errors }} orchestration errors</div></div></div></div>
+    <div class="col-md-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-secondary small">Median runtime</div><div class="fs-3 fw-semibold">{{ '%.2f'|format(overall.runtime_seconds.median) if overall.runtime_seconds.median is not none else '—' }}s</div><div class="small text-secondary">{{ overall.runtime_seconds.measurements }} measurements</div></div></div></div>
+    <div class="col-md-3"><div class="card border-0 shadow-sm h-100"><div class="card-body"><div class="text-secondary small">Token coverage</div><div class="fs-3 fw-semibold">{{ '%.1f'|format((overall.tokens.coverage_rate or 0) * 100) if overall.tokens.coverage_rate is not none else '—' }}{% if overall.tokens.coverage_rate is not none %}%{% endif %}</div><div class="small text-secondary">{{ overall.tokens.measurements }} measured runs</div></div></div></div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-4"><div class="card-body">
+    <h2 class="h5">Conservative leaderboard</h2>
+    <p class="text-secondary small">Reliability is the lower bound of the 95% Wilson success-rate interval. Raw success, orchestration errors, then median runtime are deterministic tie-breakers.</p>
+    <div class="table-responsive"><table class="table align-middle mb-0">
+      <thead><tr><th>Rank</th><th>Agent</th><th>Reliability</th><th>Success</th><th>95% CI</th><th>Median runtime</th><th>Avg tokens</th></tr></thead>
+      <tbody>
+      {% for row in ranking %}
+        {% set ci = row.success_rate_confidence_interval_95 %}
+        <tr>
+          <td class="fw-semibold">#{{ row.rank }}</td>
+          <td>{{ row.agent_name }}</td>
+          <td>{{ '%.1f'|format(row.reliability_score * 100) }}%</td>
+          <td>{{ '%.1f'|format((row.success_rate or 0) * 100) }}%</td>
+          <td>{% if ci %}{{ '%.1f'|format(ci.low * 100) }}–{{ '%.1f'|format(ci.high * 100) }}%{% else %}—{% endif %}</td>
+          <td>{{ '%.2f'|format(row.median_runtime_seconds) if row.median_runtime_seconds is not none else '—' }}s</td>
+          <td>{{ '%.0f'|format(row.average_tokens) if row.average_tokens is not none else '—' }}</td>
+        </tr>
+      {% else %}<tr><td colspan="7" class="text-secondary text-center py-4">No ranked results yet.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div></div>
+
+  <div class="card border-0 shadow-sm mb-4"><div class="card-body">
+    <h2 class="h5">Pairwise task outcomes</h2>
+    <div class="table-responsive"><table class="table align-middle mb-0">
+      <thead><tr><th>Agent A</th><th>Agent B</th><th>A wins</th><th>B wins</th><th>Ties</th><th>Tasks</th></tr></thead>
+      <tbody>
+      {% for row in pairwise %}
+        <tr><td>{{ row.left_agent_name }}</td><td>{{ row.right_agent_name }}</td><td>{{ row.left_task_wins }}</td><td>{{ row.right_task_wins }}</td><td>{{ row.ties }}</td><td>{{ row.tasks_compared }}</td></tr>
+      {% else %}<tr><td colspan="6" class="text-secondary text-center py-4">Pairwise comparison requires at least two agents.</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+    <p class="text-secondary small mt-3 mb-0">Pairwise wins use task success rate only. Equal-quality task outcomes stay tied; runtime is not used to manufacture a win.</p>
+  </div></div>
+
+  <div class="alert alert-secondary mb-0">
+    <strong>Interpretation:</strong> intervals are descriptive uncertainty estimates over the observed repeated trials. Rankings are conservative summaries, not claims that differences are statistically significant.
+  </div>
+</main>
+</body>
+</html>
