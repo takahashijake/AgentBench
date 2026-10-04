@@ -261,3 +261,77 @@ class ExperimentTrial(Base):
         cascade="all, delete-orphan",
         order_by="ExperimentWorkerAttempt.id",
     )
+
+
+
+class Campaign(Base):
+    """One persisted multi-suite evaluation campaign."""
+
+    __tablename__ = "campaigns"
+
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_key = Column(String(128), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    manifest_sha256 = Column(String(64), nullable=False, index=True)
+    definition = Column(JSON, nullable=False)
+    stop_on_error = Column(Boolean, nullable=False, default=False)
+    status = Column(String(64), nullable=False, default="pending")
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    members = relationship(
+        "CampaignMemberRun",
+        back_populates="campaign",
+        cascade="all, delete-orphan",
+        order_by="CampaignMemberRun.ordinal",
+    )
+
+
+class CampaignMemberRun(Base):
+    """Persisted execution result for one campaign member suite."""
+
+    __tablename__ = "campaign_member_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "campaign_id",
+            "member_id",
+            name="uq_campaign_member_id",
+        ),
+        UniqueConstraint(
+            "campaign_id",
+            "ordinal",
+            name="uq_campaign_member_ordinal",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(
+        Integer,
+        ForeignKey("campaigns.id"),
+        nullable=False,
+        index=True,
+    )
+    member_id = Column(String(128), nullable=False)
+    ordinal = Column(Integer, nullable=False)
+    suite_id = Column(String(128), nullable=False)
+    suite_manifest_sha256 = Column(String(64), nullable=False)
+    lock_identity_sha256 = Column(String(64), nullable=False)
+    experiment_id = Column(
+        Integer,
+        ForeignKey("experiments.id"),
+        nullable=True,
+        index=True,
+    )
+    status = Column(String(64), nullable=False, default="planned")
+    error = Column(Text, nullable=True)
+    report_json = Column(JSON, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    campaign = relationship("Campaign", back_populates="members")
+    experiment = relationship("Experiment")
