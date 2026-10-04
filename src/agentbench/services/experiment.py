@@ -286,7 +286,9 @@ class ExperimentService:
             raise ValueError(f"Experiment trial not found: {trial_id}")
         if claimed != 1:
             if trial.status == "running":
-                raise ExperimentBusyError(f"Experiment trial {trial_id} is already running")
+                raise ExperimentBusyError(
+                    f"Experiment trial {trial_id} is already running"
+                )
             return TrialExecutionOutcome(
                 trial_id=int(trial.id),
                 status=str(trial.status),

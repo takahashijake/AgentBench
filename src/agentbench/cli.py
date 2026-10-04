@@ -430,9 +430,7 @@ def _run_database_command(args: argparse.Namespace) -> int:
                     "recover requires --confirm-inactive because resetting a live "
                     "worker claim can duplicate benchmark execution"
                 )
-            recovered = service.experiments.recover_running_trials(
-                args.experiment_id
-            )
+            recovered = service.experiments.recover_running_trials(args.experiment_id)
             _write_json(
                 {
                     "experiment_id": args.experiment_id,

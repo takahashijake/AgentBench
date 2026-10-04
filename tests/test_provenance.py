@@ -146,6 +146,4 @@ def test_worker_count_is_locked_and_reported_as_replay_drift(tmp_path: Path):
     verification = verify_suite_lock(changed, expected)
 
     assert verification["valid"] is False
-    assert any(
-        row["path"] == "experiment.max_workers" for row in verification["drift"]
-    )
+    assert any(row["path"] == "experiment.max_workers" for row in verification["drift"])
