@@ -313,7 +313,6 @@ def render_markdown_report(report: dict[str, Any]) -> str:
 __all__ = ["render_leaderboard_markdown", "render_markdown_report"]
 
 
-
 def render_campaign_markdown(report: dict[str, Any]) -> str:
     """Render a concise multi-suite campaign report."""
 

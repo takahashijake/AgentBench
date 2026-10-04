@@ -43,9 +43,7 @@ def _campaign_ranking(by_agent: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows.sort(
         key=lambda item: (
             -float(item["reliability_score"]),
-            -float(
-                item["success_rate"] if item["success_rate"] is not None else -1.0
-            ),
+            -float(item["success_rate"] if item["success_rate"] is not None else -1.0),
             float(
                 item["orchestration_error_rate"]
                 if item["orchestration_error_rate"] is not None
@@ -206,8 +204,7 @@ class CampaignService:
                     target[key] += int(metrics.get(key) or 0)
 
         by_agent = [
-            {"agent_name": name, **values}
-            for name, values in sorted(totals.items())
+            {"agent_name": name, **values} for name, values in sorted(totals.items())
         ]
         ranking = _campaign_ranking(by_agent)
         overall = {
@@ -242,16 +239,12 @@ class CampaignService:
                 "suite_manifest_sha256": item.suite_manifest_sha256,
                 "lock_identity_sha256": item.lock_identity_sha256,
                 "experiment_id": (
-                    int(item.experiment_id)
-                    if item.experiment_id is not None
-                    else None
+                    int(item.experiment_id) if item.experiment_id is not None else None
                 ),
                 "status": item.status,
                 "error": item.error,
                 "started_at": (
-                    item.started_at.isoformat()
-                    if item.started_at is not None
-                    else None
+                    item.started_at.isoformat() if item.started_at is not None else None
                 ),
                 "completed_at": (
                     item.completed_at.isoformat()

@@ -263,7 +263,6 @@ class ExperimentTrial(Base):
     )
 
 
-
 class Campaign(Base):
     """One persisted multi-suite evaluation campaign."""
 
