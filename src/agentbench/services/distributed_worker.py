@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 import socket
 import threading
 import uuid
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -17,7 +17,9 @@ from ..models.database import (
     ExperimentExecution,
     ExperimentTrial,
     ExperimentWorkerAttempt,
+    WorkerRegistration,
 )
+from ..resources import TaskRequirements, WorkerCapabilities
 from ..timeutils import utc_now
 from .experiment import ExperimentBusyError, ExperimentService, TrialExecutionOutcome
 
@@ -62,6 +64,7 @@ class DistributedWorkerService:
                 "Distributed workers require file-backed SQLite or another "
                 "multi-connection database"
             )
+        self.resource_inspector = self.experiments.resource_inspector
         self.session_factory = sessionmaker(
             bind=self.engine,
             autocommit=False,
@@ -83,6 +86,111 @@ class DistributedWorkerService:
     def default_owner_id() -> str:
         return f"{socket.gethostname()}-{uuid.uuid4().hex[:12]}"
 
+    def _required_commands(self, experiment_id: int) -> tuple[str, ...]:
+        experiment = self.experiments.get_experiment(experiment_id)
+        commands: set[str] = set()
+        snapshots = cast(list[dict[str, Any]], experiment.task_snapshots)
+        for snapshot in snapshots:
+            requirements = TaskRequirements.from_mapping(snapshot.get("requirements"))
+            commands.update(requirements.required_commands)
+        return tuple(sorted(commands))
+
+    def register_worker(
+        self,
+        owner_id: str,
+        *,
+        experiment_id: int | None = None,
+        capabilities: WorkerCapabilities | None = None,
+        labels: tuple[str, ...] = (),
+        metadata: dict[str, Any] | None = None,
+    ) -> WorkerCapabilities:
+        owner = owner_id.strip()
+        if not owner:
+            raise ValueError("owner_id must not be empty")
+        if capabilities is None:
+            required_commands = (
+                self._required_commands(experiment_id)
+                if experiment_id is not None
+                else ()
+            )
+            capabilities = self.resource_inspector.capabilities(
+                required_commands,
+                labels=labels,
+            )
+        now = utc_now()
+        existing = (
+            self.db.query(WorkerRegistration)
+            .filter(WorkerRegistration.owner_id == owner)
+            .one_or_none()
+        )
+        payload = capabilities.as_dict()
+        if existing is None:
+            self.db.add(
+                WorkerRegistration(
+                    owner_id=owner,
+                    status="active",
+                    capabilities=payload,
+                    metadata_json=dict(metadata or {}),
+                    registered_at=now,
+                    heartbeat_at=now,
+                )
+            )
+        else:
+            (
+                self.db.query(WorkerRegistration)
+                .filter(WorkerRegistration.id == int(existing.id))
+                .update(
+                    {
+                        WorkerRegistration.status: "active",
+                        WorkerRegistration.capabilities: payload,
+                        WorkerRegistration.metadata_json: dict(metadata or {}),
+                        WorkerRegistration.heartbeat_at: now,
+                    },
+                    synchronize_session=False,
+                )
+            )
+        self.db.commit()
+        return capabilities
+
+    def worker_capabilities(self, owner_id: str) -> WorkerCapabilities | None:
+        row = (
+            self.db.query(WorkerRegistration)
+            .filter(
+                WorkerRegistration.owner_id == owner_id,
+                WorkerRegistration.status == "active",
+            )
+            .one_or_none()
+        )
+        if row is None:
+            return None
+        return WorkerCapabilities.from_mapping(dict(row.capabilities or {}))
+
+    def worker_heartbeat(self, owner_id: str) -> bool:
+        updated = (
+            self.db.query(WorkerRegistration)
+            .filter(
+                WorkerRegistration.owner_id == owner_id,
+                WorkerRegistration.status == "active",
+            )
+            .update(
+                {WorkerRegistration.heartbeat_at: utc_now()},
+                synchronize_session=False,
+            )
+        )
+        self.db.commit()
+        return updated == 1
+
+    def _trial_requirements(
+        self,
+        experiment: Experiment,
+        task_id: int,
+    ) -> TaskRequirements:
+        raw_snapshots = cast(list[dict[str, Any]], experiment.task_snapshots)
+        snapshots = self.experiments._snapshots_by_id(raw_snapshots)
+        return TaskRequirements.from_mapping(
+            snapshots.get(int(task_id), {}).get("requirements")
+        )
+
     def claim_next(
         self,
         experiment_id: int,
@@ -95,6 +203,12 @@ class DistributedWorkerService:
             raise ValueError("owner_id must not be empty")
         lease_seconds = self.validate_lease_seconds(lease_seconds)
         experiment = self.experiments.get_experiment(experiment_id)
+        capabilities = self.worker_capabilities(owner)
+        if capabilities is None:
+            capabilities = self.register_worker(
+                owner,
+                experiment_id=experiment_id,
+            )
         if experiment.status == "completed":
             return None
         if experiment.status == "running":
@@ -135,19 +249,29 @@ class DistributedWorkerService:
                 return None
 
         while True:
-            row = (
-                self.db.query(ExperimentTrial.id)
+            rows: list[Any] = (
+                self.db.query(ExperimentTrial.id, ExperimentTrial.task_id)
                 .filter(
                     ExperimentTrial.experiment_id == experiment.id,
                     ExperimentTrial.status == "planned",
                 )
                 .order_by(ExperimentTrial.ordinal.asc())
-                .first()
+                .all()
             )
-            if row is None:
+            eligible_row = next(
+                (
+                    row
+                    for row in rows
+                    if capabilities.evaluate(
+                        self._trial_requirements(experiment, int(row[1]))
+                    ).eligible
+                ),
+                None,
+            )
+            if eligible_row is None:
                 return None
 
-            trial_id = int(row[0])
+            trial_id = int(eligible_row[0])
             now = utc_now()
             claimed = (
                 self.db.query(ExperimentTrial)
@@ -180,7 +304,10 @@ class DistributedWorkerService:
                 acquired_at=now,
                 heartbeat_at=now,
                 expires_at=expires_at,
-                details={"lease_seconds": lease_seconds},
+                details={
+                    "lease_seconds": lease_seconds,
+                    "worker_capabilities": capabilities.as_dict(),
+                },
             )
             self.db.add(attempt)
             (
@@ -354,6 +481,7 @@ class DistributedWorkerService:
         max_trials: int | None = None,
     ) -> dict[str, Any]:
         owner = (owner_id or self.default_owner_id()).strip()
+        self.register_worker(owner, experiment_id=experiment_id)
         if max_trials is not None and max_trials < 1:
             raise ValueError("max_trials must be greater than 0 when provided")
         lease_seconds = self.validate_lease_seconds(lease_seconds)
@@ -471,6 +599,64 @@ class DistributedWorkerService:
             "experiment_id": experiment_id,
             "recovered_trial_ids": recovered,
             "recovered_count": len(recovered),
+        }
+
+    def queue_status(self, experiment_id: int) -> dict[str, Any]:
+        experiment = self.experiments.get_experiment(experiment_id)
+        registrations = (
+            self.db.query(WorkerRegistration)
+            .filter(WorkerRegistration.status == "active")
+            .order_by(WorkerRegistration.owner_id.asc())
+            .all()
+        )
+        workers = [
+            (
+                row.owner_id,
+                WorkerCapabilities.from_mapping(dict(row.capabilities or {})),
+            )
+            for row in registrations
+        ]
+        planned = (
+            self.db.query(ExperimentTrial)
+            .filter(
+                ExperimentTrial.experiment_id == experiment.id,
+                ExperimentTrial.status == "planned",
+            )
+            .order_by(ExperimentTrial.ordinal.asc())
+            .all()
+        )
+        rows: list[dict[str, Any]] = []
+        unmatched = 0
+        for trial in planned:
+            requirements = self._trial_requirements(experiment, int(trial.task_id))
+            eligible_owners = [
+                owner
+                for owner, capabilities in workers
+                if capabilities.evaluate(requirements).eligible
+            ]
+            if not eligible_owners:
+                unmatched += 1
+            rows.append(
+                {
+                    "trial_id": int(trial.id),
+                    "task_id": int(trial.task_id),
+                    "requirements": requirements.as_dict(),
+                    "eligible_owners": eligible_owners,
+                }
+            )
+        return {
+            "experiment_id": experiment_id,
+            "planned_count": len(planned),
+            "registered_worker_count": len(workers),
+            "unmatched_planned_count": unmatched,
+            "trials": rows,
+            "workers": [
+                {
+                    "owner_id": owner,
+                    "capabilities": capabilities.as_dict(),
+                }
+                for owner, capabilities in workers
+            ],
         }
 
     def status(self, experiment_id: int) -> dict[str, Any]:

@@ -8,6 +8,7 @@ from .database import (
     Experiment,
     ExperimentExecution,
     ExperimentWorkerAttempt,
+    WorkerRegistration,
     ExperimentTrial,
 )
 from .session import (
@@ -28,6 +29,7 @@ __all__ = [
     "Experiment",
     "ExperimentExecution",
     "ExperimentWorkerAttempt",
+    "WorkerRegistration",
     "ExperimentTrial",
     "init_db",
     "get_session",

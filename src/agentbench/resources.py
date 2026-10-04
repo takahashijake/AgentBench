@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass
 import os
 import platform
 import shutil
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 
 @dataclass(frozen=True)
@@ -68,6 +68,93 @@ class TaskRequirements:
 
 
 @dataclass(frozen=True)
+class WorkerCapabilities:
+    """Normalized capabilities advertised by a durable worker."""
+
+    platform: str
+    cpu_count: int
+    memory_mb: int | None
+    commands: tuple[str, ...] = ()
+    labels: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        normalized_platform = self.platform.strip().lower()
+        normalized_commands = tuple(sorted({value.strip() for value in self.commands}))
+        normalized_labels = tuple(sorted({value.strip() for value in self.labels}))
+        if not normalized_platform:
+            raise ValueError("platform must not be empty")
+        if self.cpu_count < 1:
+            raise ValueError("cpu_count must be greater than 0")
+        if self.memory_mb is not None and self.memory_mb < 1:
+            raise ValueError("memory_mb must be greater than 0 when provided")
+        if any(not value for value in normalized_commands):
+            raise ValueError("commands must not contain empty values")
+        if any(not value for value in normalized_labels):
+            raise ValueError("labels must not contain empty values")
+        object.__setattr__(self, "platform", normalized_platform)
+        object.__setattr__(self, "commands", normalized_commands)
+        object.__setattr__(self, "labels", normalized_labels)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "platform": self.platform,
+            "cpu_count": self.cpu_count,
+            "memory_mb": self.memory_mb,
+            "commands": list(self.commands),
+            "labels": list(self.labels),
+        }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any]) -> "WorkerCapabilities":
+        return cls(
+            platform=str(value.get("platform") or ""),
+            cpu_count=int(value.get("cpu_count") or 0),
+            memory_mb=(
+                int(value["memory_mb"]) if value.get("memory_mb") is not None else None
+            ),
+            commands=tuple(value.get("commands") or ()),
+            labels=tuple(value.get("labels") or ()),
+        )
+
+    def evaluate(self, requirements: TaskRequirements) -> "ResourceEligibility":
+        reasons: list[str] = []
+        if (
+            requirements.supported_platforms
+            and self.platform not in requirements.supported_platforms
+        ):
+            reasons.append(
+                f"platform {self.platform!r} is not allowed by "
+                f"{list(requirements.supported_platforms)!r}"
+            )
+        if self.cpu_count < requirements.min_cpu_count:
+            reasons.append(
+                f"cpu_count={self.cpu_count} is below "
+                f"min_cpu_count={requirements.min_cpu_count}"
+            )
+        if requirements.min_memory_mb is not None:
+            if self.memory_mb is None:
+                reasons.append("worker memory is unknown")
+            elif self.memory_mb < requirements.min_memory_mb:
+                reasons.append(
+                    f"memory_mb={self.memory_mb} is below "
+                    f"min_memory_mb={requirements.min_memory_mb}"
+                )
+        available = set(self.commands)
+        missing = [
+            command
+            for command in requirements.required_commands
+            if command not in available
+        ]
+        if missing:
+            reasons.append(f"required commands are unavailable: {missing}")
+        return ResourceEligibility(
+            eligible=not reasons,
+            reasons=tuple(reasons),
+            observed=self.as_dict(),
+        )
+
+
+@dataclass(frozen=True)
 class ResourceEligibility:
     eligible: bool
     reasons: tuple[str, ...]
@@ -91,6 +178,27 @@ def _memory_mb() -> int | None:
 
 class HostResourceInspector:
     """Evaluate declarative requirements against the current local host."""
+
+    def capabilities(
+        self,
+        required_commands: Iterable[str] = (),
+        *,
+        labels: Iterable[str] = (),
+    ) -> WorkerCapabilities:
+        commands = tuple(
+            sorted(
+                command
+                for command in set(required_commands)
+                if shutil.which(command) is not None
+            )
+        )
+        return WorkerCapabilities(
+            platform=platform.system().lower(),
+            cpu_count=os.cpu_count() or 1,
+            memory_mb=_memory_mb(),
+            commands=commands,
+            labels=tuple(labels),
+        )
 
     def evaluate(self, requirements: TaskRequirements) -> ResourceEligibility:
         system = platform.system().lower()
@@ -148,4 +256,5 @@ __all__ = [
     "HostResourceInspector",
     "ResourceEligibility",
     "TaskRequirements",
+    "WorkerCapabilities",
 ]

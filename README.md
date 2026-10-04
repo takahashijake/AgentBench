@@ -1,4 +1,4 @@
-# AgentBench V6
+# AgentBench V7
 
 **Extensible, reproducible evaluation infrastructure for coding agents.**
 
@@ -11,6 +11,30 @@ verified portable result bundle.
 V3 is primarily a **software-engineering release**. The goal is not to add more
 conditionals to a benchmark runner; it is to make AgentBench safe to extend.
 
+
+## V7 capability-aware heterogeneous scheduling
+
+V7 connects task resource contracts to durable distributed workers.
+
+- **Durable worker registrations** persist normalized platform, CPU, memory,
+  available command, and scheduling-label capabilities.
+- **Eligibility before ownership** means a worker only claims planned trials whose
+  frozen V4 task requirements it can satisfy.
+- **Deterministic compatible scanning** preserves experiment ordinal order while
+  skipping cells incompatible with the requesting worker.
+- **Queue diagnostics** show which registered workers can execute each planned
+  trial and identify unmatched work before a benchmark stalls.
+- **Capability evidence** is copied into each lease attempt. Local analysis shows
+  worker registrations; portable bundles hash owner identities instead of
+  exporting raw host-derived owner IDs.
+- **Automatic registration** lets `worker run` discover required executables for
+  the experiment and advertise only commands actually available on that host.
+
+```bash
+agentbench worker register 1 --owner gpu-worker --label accelerator
+agentbench worker queue 1
+agentbench worker run 1 --owner gpu-worker --lease-seconds 60
+```
 
 ## V6 durable cross-process workers
 

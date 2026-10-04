@@ -86,3 +86,21 @@ claims whose persisted expiry is older than the optional grace period.
 
 Use `worker status` before recovery to inspect owners, expiry times, and claim
 state. Lease tokens are internal fencing credentials and are never printed.
+
+
+## Capability-aware distributed workers
+
+```text
+agentbench worker register <experiment-id> --owner <worker-id> [--label LABEL]...
+agentbench worker queue <experiment-id>
+agentbench worker run <experiment-id> --owner <worker-id> [--lease-seconds N]
+```
+
+Registration auto-detects the host platform, CPU count, physical memory when
+available, and commands required by the experiment. Only executables actually
+present on PATH are advertised.
+
+`worker queue` reports every planned trial's frozen requirements and the
+registered owners that can satisfy them. An unmatched trial is not failed or
+skipped; it remains planned until a compatible worker appears or the user changes
+the experiment outside reproducible replay.

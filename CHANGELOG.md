@@ -1,5 +1,32 @@
 # Changelog
 
+## 7.0.0 — Capability-aware Heterogeneous Scheduling
+
+### Scheduling
+
+- persist durable worker registrations with normalized CPU, memory, platform,
+  executable, and label capabilities
+- match frozen task requirements before a worker acquires durable ownership
+- scan planned trials deterministically and skip incompatible rows without
+  mutating them
+- add queue diagnostics for eligible owners and unmatched planned work
+
+### Worker product surface
+
+- `agentbench worker register <experiment> --owner <id> [--label ...]`
+- `agentbench worker queue <experiment>`
+- `worker run` auto-registers host capabilities needed by the experiment
+- worker registration heartbeat/update support
+
+### Evidence and privacy
+
+- analysis/report schema 7 exposes active worker registrations and capabilities
+- lease-attempt details retain the capability snapshot used for scheduling
+- portable bundles hash raw owner IDs instead of exporting host-derived worker
+  identities
+- AgentBench package/API version 7.0.0
+
+
 ## 6.0.0 — Durable Cross-process Worker Leases
 
 ### Worker protocol

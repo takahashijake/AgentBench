@@ -162,7 +162,7 @@ def test_result_bundle_is_deterministic_and_verifiable(tmp_path: Path):
 
     verified = verify_result_bundle(first)
     assert verified.identity_sha256 == one["identity_sha256"]
-    assert verified.report["report_schema_version"] == 6
+    assert verified.report["report_schema_version"] == 7
     assert verified.report["experiment"]["id"] == experiment.id
     with zipfile.ZipFile(first, "r") as archive:
         experiment_doc = json.loads(archive.read("experiment.json"))

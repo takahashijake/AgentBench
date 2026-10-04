@@ -2,11 +2,11 @@
 
 AgentBench versions persisted/public formats independently.
 
-Current V6 writers use:
+Current V7 writers use:
 
 - suite manifest schema: **5**
-- analysis schema: **6**
-- suite report schema: **6**
+- analysis schema: **7**
+- suite report schema: **7**
 - suite-lock schema: **4**
 - result-bundle schema: **1**
 
@@ -64,3 +64,14 @@ Worker-attempt statuses may include:
 A stale worker may internally observe `lease_lost`; canonical attempt history
 continues to reflect the recovered/expired ownership record rather than allowing
 the stale process to overwrite it.
+
+
+## V7 worker capability evidence
+
+Analysis schema 7 adds `worker_registrations` containing active local worker
+capabilities. Durable lease attempts retain the capability snapshot that
+justified scheduling.
+
+Portable result bundles do not copy raw worker owner IDs. Worker attempts use an
+`owner_id_sha256` field so shared evidence can correlate attempts without
+disclosing a hostname-derived identifier.

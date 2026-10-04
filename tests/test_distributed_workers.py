@@ -15,7 +15,9 @@ from agentbench.models.database import (
     BenchmarkTask,
     ExperimentTrial,
     ExperimentWorkerAttempt,
+    WorkerRegistration,
 )
+from agentbench.resources import WorkerCapabilities
 from agentbench.services.distributed_worker import DistributedWorkerService
 from agentbench.services.experiment import ExperimentService
 from agentbench.timeutils import utc_now
@@ -243,11 +245,120 @@ def test_worker_run_persists_attempts_and_completes_experiment(tmp_path: Path):
         assert result["completed_claims"] == 1
         assert result["outcomes"][0]["status"] == "completed"
         summary = worker.experiments.aggregate_experiment(experiment.id)
-        assert summary["analysis_schema_version"] == 6
+        assert summary["analysis_schema_version"] == 7
         assert summary["worker_summary"]["attempt_count"] == 1
         assert summary["worker_summary"]["active_count"] == 0
         assert summary["worker_attempts"][0]["owner_id"] == "worker-runner"
         assert summary["worker_attempts"][0]["status"] == "completed"
         assert db.query(BenchmarkRun).count() == 1
+    finally:
+        db.close()
+
+
+def test_capability_aware_workers_skip_incompatible_earlier_trials(tmp_path: Path):
+    factory = make_factory(tmp_path)
+    db_low = factory()
+    db_high = factory()
+    try:
+        repo_high = tmp_path / "repo-high"
+        repo_low = tmp_path / "repo-low"
+        commit_high = init_git_repo(repo_high)
+        commit_low = init_git_repo(repo_low)
+        agent = add_agent(db_low, "capability-agent")
+        high = add_task(db_low, "high-resource", repo_high, commit_high)
+        low = add_task(db_low, "low-resource", repo_low, commit_low)
+        service = ExperimentService(db_low, artifact_root=tmp_path / "artifacts")
+        experiment = service.create_experiment(
+            name="capability-routing",
+            task_ids=[high.id, low.id],
+            agent_config_ids=[agent.id],
+            task_requirements={
+                high.id: {
+                    "min_cpu_count": 8,
+                    "required_commands": ["special-accelerator"],
+                },
+                low.id: {"min_cpu_count": 1},
+            },
+        )
+
+        low_worker = DistributedWorkerService(db_low, experiment_service=service)
+        low_worker.register_worker(
+            "small-worker",
+            capabilities=WorkerCapabilities(
+                platform="linux",
+                cpu_count=2,
+                memory_mb=2048,
+                commands=(),
+                labels=("cpu",),
+            ),
+        )
+
+        queue = low_worker.queue_status(experiment.id)
+        assert queue["planned_count"] == 2
+        assert queue["unmatched_planned_count"] == 1
+        high_row = next(row for row in queue["trials"] if row["task_id"] == high.id)
+        low_row = next(row for row in queue["trials"] if row["task_id"] == low.id)
+        assert high_row["eligible_owners"] == []
+        assert low_row["eligible_owners"] == ["small-worker"]
+
+        low_claim = low_worker.claim_next(
+            experiment.id,
+            owner_id="small-worker",
+            lease_seconds=30,
+        )
+        assert low_claim is not None
+        assert low_claim.trial_id == low_row["trial_id"]
+
+        high_worker = DistributedWorkerService(db_high)
+        high_worker.register_worker(
+            "large-worker",
+            capabilities=WorkerCapabilities(
+                platform="linux",
+                cpu_count=16,
+                memory_mb=32768,
+                commands=("special-accelerator",),
+                labels=("accelerator",),
+            ),
+        )
+        high_claim = high_worker.claim_next(
+            experiment.id,
+            owner_id="large-worker",
+            lease_seconds=30,
+        )
+        assert high_claim is not None
+        assert high_claim.trial_id == high_row["trial_id"]
+    finally:
+        db_high.close()
+        db_low.close()
+
+
+def test_worker_registration_is_durable_and_normalized(tmp_path: Path):
+    factory, db, experiment = build_two_task_experiment(tmp_path)
+    try:
+        worker = DistributedWorkerService(db)
+        capabilities = worker.register_worker(
+            "registered-worker",
+            experiment_id=experiment.id,
+            capabilities=WorkerCapabilities(
+                platform="LINUX",
+                cpu_count=4,
+                memory_mb=8192,
+                commands=("git", "python", "git"),
+                labels=("general", "general"),
+            ),
+            metadata={"pool": "test"},
+        )
+
+        assert capabilities.platform == "linux"
+        assert capabilities.commands == ("git", "python")
+        assert capabilities.labels == ("general",)
+        registration = (
+            db.query(WorkerRegistration)
+            .filter(WorkerRegistration.owner_id == "registered-worker")
+            .one()
+        )
+        assert registration.capabilities["cpu_count"] == 4
+        assert registration.metadata_json == {"pool": "test"}
+        assert worker.worker_heartbeat("registered-worker") is True
     finally:
         db.close()
