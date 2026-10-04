@@ -1,5 +1,38 @@
 # Changelog
 
+## 6.0.0 — Durable Cross-process Worker Leases
+
+### Worker protocol
+
+- added database-backed worker ownership records with owner IDs and opaque lease tokens
+- added bounded lease duration plus periodic heartbeat extension
+- added cooperative `agentbench worker run` processes for shared experiments
+- added worker status inspection and explicit expired-claim recovery
+- added API worker status and recovery surfaces
+
+### Correctness
+
+- separated trial claiming from already-claimed execution
+- added fencing callbacks so stale/recovered workers cannot mutate canonical trial state
+- mixed local-coordinator/distributed-worker execution is rejected
+- expired claims are never automatically requeued
+
+### Evidence
+
+- analysis schema 6 adds worker attempt history and aggregate worker state
+- suite report schema 6
+- portable bundles include worker ownership history without lease tokens
+- package/API version 6.0.0
+
+### QA
+
+- multi-session competing claim coverage
+- heartbeat extension coverage
+- expiry/requeue coverage
+- stale-owner fencing regression coverage
+- end-to-end worker execution evidence tests
+
+
 ## 5.0.0 — Bounded Local Parallel Execution
 
 ### Execution engine

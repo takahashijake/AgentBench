@@ -18,6 +18,7 @@ nav:
       - Architecture: concepts/architecture.md
       - Execution Model: concepts/execution-model.md
       - Resource-aware Execution: concepts/resource-requirements.md
+      - Durable Workers: concepts/durable-workers.md
   - Guides:
       - Running Benchmarks: guides/running-benchmarks.md
       - Interpreting Results: guides/interpreting-results.md
