@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install test coverage lint format format-check typecheck docs build smoke qa clean
+.PHONY: install test coverage lint format format-check typecheck docs build smoke docker-build docker-smoke qa clean
 
 install:
 	$(PYTHON) -m pip install -e ".[dev]"
@@ -35,6 +35,13 @@ smoke:
 	agentbench doctor
 	agentbench pack list
 	agentbench pack show smoke-v2
+
+docker-build:
+	docker build --tag agentbench-local .
+
+docker-smoke: docker-build
+	docker run --rm agentbench-local --version
+	docker run --rm agentbench-local doctor
 
 qa: lint format-check typecheck test docs build smoke
 

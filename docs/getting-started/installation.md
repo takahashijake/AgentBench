@@ -26,3 +26,21 @@ agentbench pack list
 ```
 
 AgentBench does not require API credentials itself. Credentials required by a configured external agent remain the responsibility of that agent and should be supplied through its documented environment/configuration path. Do not embed secrets in suite manifests or command templates.
+
+## Container workflow
+
+Docker is optional. It provides a clean installed CLI environment and is verified in CI:
+
+```bash
+make docker-smoke
+```
+
+Equivalent commands:
+
+```bash
+docker build --tag agentbench-local .
+docker run --rm agentbench-local --version
+docker run --rm agentbench-local doctor
+```
+
+The container validates AgentBench itself. External coding-agent executables and credentials are intentionally not bundled into the image.
