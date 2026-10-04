@@ -235,6 +235,12 @@ def _build_parser() -> argparse.ArgumentParser:
         "--write-lock",
         help="Optional path to persist the resolved lock used by this run.",
     )
+    run.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Bounded local worker count for independent trial execution (1-32).",
+    )
     _add_report_outputs(run)
 
     replay = subparsers.add_parser(
@@ -247,7 +253,36 @@ def _build_parser() -> argparse.ArgumentParser:
         "--write-lock",
         help="Optional path to persist the newly verified current lock.",
     )
+    replay.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Bounded local worker count for independent trial execution (1-32).",
+    )
     _add_report_outputs(replay)
+
+    execute = subparsers.add_parser(
+        "execute",
+        help="Resume/execute a persisted experiment by ID.",
+    )
+    execute.add_argument("experiment_id", type=int)
+    execute.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Bounded local worker count for independent trial execution (1-32).",
+    )
+
+    recover = subparsers.add_parser(
+        "recover",
+        help="Reset interrupted running trial claims to planned for explicit resume.",
+    )
+    recover.add_argument("experiment_id", type=int)
+    recover.add_argument(
+        "--confirm-inactive",
+        action="store_true",
+        help="Required acknowledgement that no worker process is still executing.",
+    )
 
     results = subparsers.add_parser(
         "results",
@@ -329,7 +364,10 @@ def _run_suite(
     if args.write_lock:
         write_suite_lock(args.write_lock, current_lock)
 
-    imported, experiment, summary = service.execute_suite(loaded)
+    imported, experiment, summary = service.execute_suite(
+        loaded,
+        max_workers=args.workers,
+    )
     report = service.build_report(loaded, imported, experiment, summary)
     report["lock"] = current_lock
 
@@ -372,6 +410,42 @@ def _run_database_command(args: argparse.Namespace) -> int:
 
         if args.command in {"run", "replay"}:
             return _run_suite(args, service)
+
+        if args.command == "execute":
+            experiment = service.experiments.execute_experiment(
+                args.experiment_id,
+                max_workers=args.workers,
+            )
+            summary = service.experiments.aggregate_experiment(experiment.id)
+            _write_json(
+                {
+                    "experiment": {
+                        "id": int(experiment.id),
+                        "name": experiment.name,
+                        "status": experiment.status,
+                        "planned_runs": experiment.planned_runs,
+                    },
+                    "summary": summary,
+                }
+            )
+            return 0
+
+        if args.command == "recover":
+            if not args.confirm_inactive:
+                raise ValueError(
+                    "recover requires --confirm-inactive because resetting a live "
+                    "worker claim can duplicate benchmark execution"
+                )
+            recovered = service.experiments.recover_running_trials(
+                args.experiment_id
+            )
+            _write_json(
+                {
+                    "experiment_id": args.experiment_id,
+                    "recovered_trials": recovered,
+                }
+            )
+            return 0
 
         if args.command == "results":
             report = _experiment_report(service, args.experiment_id)

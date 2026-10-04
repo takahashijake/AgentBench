@@ -207,12 +207,17 @@ class SuiteService:
     def execute_suite(
         self,
         loaded: LoadedSuiteManifest,
+        *,
+        max_workers: int = 1,
     ) -> tuple[SuiteImportResult, Experiment, dict[str, Any]]:
         """Import, plan, execute, and aggregate a complete suite."""
 
         imported = self.import_suite(loaded)
         experiment = self.create_experiment(loaded, imported)
-        experiment = self.experiments.execute_experiment(experiment.id)
+        experiment = self.experiments.execute_experiment(
+            experiment.id,
+            max_workers=max_workers,
+        )
         summary = self.experiments.aggregate_experiment(experiment.id)
         return imported, experiment, summary
 

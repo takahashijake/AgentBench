@@ -68,10 +68,17 @@ def get_experiment(experiment_id: int, db: Session = Depends(get_db)):
     "/api/experiments/{experiment_id}/run",
     response_model=ExperimentResults,
 )
-def run_experiment(experiment_id: int, db: Session = Depends(get_db)):
+def run_experiment(
+    experiment_id: int,
+    workers: int = 1,
+    db: Session = Depends(get_db),
+):
     service = ExperimentService(db)
     try:
-        experiment = service.execute_experiment(experiment_id)
+        experiment = service.execute_experiment(
+            experiment_id,
+            max_workers=workers,
+        )
         return ExperimentResults(
             experiment=experiment,
             summary=service.aggregate_experiment(experiment_id),
@@ -80,6 +87,8 @@ def run_experiment(experiment_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ExperimentBusyError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/api/experiments/{experiment_id}/leaderboard")
