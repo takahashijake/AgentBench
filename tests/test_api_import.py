@@ -4,7 +4,7 @@ from sqlalchemy.orm import configure_mappers
 def test_api_import_and_mapper_configuration():
     configure_mappers()
 
-    from agentbench.api import TEMPLATES_DIR, app, templates
+    from agentbench.api import TEMPLATES_DIR, app
 
     assert app.title == "AgentBench Local"
     assert app.version == "3.0.0"
@@ -29,7 +29,6 @@ def test_api_import_and_mapper_configuration():
     assert "/api/experiments/{experiment_id}/leaderboard" in paths
 
 
-
 def test_packaged_v3_templates_compile():
     from agentbench.api import templates
 
@@ -41,7 +40,6 @@ def test_packaged_v3_templates_compile():
         "experiment_detail.html",
     ):
         assert templates.get_template(name) is not None
-
 
 
 def test_application_factory_returns_independent_fastapi_instances():

@@ -1,11 +1,11 @@
 """Database session management."""
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, scoped_session
-from typing import Optional
 import os
 
-from .database import Base, AgentConfig, BenchmarkTask, BenchmarkRun
+from sqlalchemy import create_engine
+from sqlalchemy.orm import scoped_session, sessionmaker
+
+from .database import Base
 
 # Default database URL
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./agentbench.db")
@@ -13,7 +13,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./agentbench.db")
 # Engine and session factory
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
 )
 session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Session = scoped_session(session_factory)

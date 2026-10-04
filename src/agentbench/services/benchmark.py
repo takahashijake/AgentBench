@@ -32,7 +32,6 @@ from ..utils.git import (
     create_git_worktree,
     get_git_commit,
     get_git_diff_stats,
-    get_git_status,
     is_git_repository,
 )
 
