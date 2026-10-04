@@ -231,7 +231,7 @@ class SuiteService:
         tasks_by_id = {item.id: item for item in loaded.manifest.tasks}
         agents_by_id = {item.id: item for item in loaded.manifest.agents}
         return {
-            "report_schema_version": 6,
+            "report_schema_version": 7,
             "suite": {
                 "id": loaded.manifest.id,
                 "name": loaded.manifest.name,

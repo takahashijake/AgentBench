@@ -889,7 +889,6 @@ class ExperimentService:
             for item in registration_rows
         ]
 
-
         return {
             "analysis_schema_version": 7,
             "experiment_id": experiment.id,

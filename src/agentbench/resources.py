@@ -110,9 +110,7 @@ class WorkerCapabilities:
             platform=str(value.get("platform") or ""),
             cpu_count=int(value.get("cpu_count") or 0),
             memory_mb=(
-                int(value["memory_mb"])
-                if value.get("memory_mb") is not None
-                else None
+                int(value["memory_mb"]) if value.get("memory_mb") is not None else None
             ),
             commands=tuple(value.get("commands") or ()),
             labels=tuple(value.get("labels") or ()),

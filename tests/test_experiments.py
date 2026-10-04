@@ -186,7 +186,7 @@ def test_matrix_executes_two_by_two_by_two_and_is_idempotent(tmp_path: Path):
     assert all(row["metrics"]["planned_runs"] == 4 for row in summary["by_task"])
     assert all(row["metrics"]["planned_runs"] == 2 for row in summary["by_cell"])
     assert all(row["metrics"]["success_rate"] == 1 for row in summary["by_cell"])
-    assert summary["analysis_schema_version"] == 6
+    assert summary["analysis_schema_version"] == 7
     assert summary["overall"]["statistics"]["success_rate_confidence_interval_95"]
     assert summary["overall"]["runtime_seconds"]["median"] is not None
     assert len(summary["ranking"]["entries"]) == 2
@@ -380,7 +380,7 @@ def test_resource_incompatible_trial_is_skipped_without_penalizing_agent(
     assert completed.trials[0].status == "skipped"
     assert "Resource requirements not satisfied" in completed.trials[0].error
     assert db.query(BenchmarkRun).count() == 0
-    assert summary["analysis_schema_version"] == 6
+    assert summary["analysis_schema_version"] == 7
     assert summary["overall"]["planned_runs"] == 1
     assert summary["overall"]["eligible_planned_runs"] == 0
     assert summary["overall"]["skipped_runs"] == 1

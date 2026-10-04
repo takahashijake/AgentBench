@@ -275,9 +275,7 @@ class ResultBundleService:
                 {
                     "id": int(item.id),
                     "trial_id": int(item.trial_id),
-                    "owner_id_sha256": _sha256_bytes(
-                        item.owner_id.encode("utf-8")
-                    ),
+                    "owner_id_sha256": _sha256_bytes(item.owner_id.encode("utf-8")),
                     "status": item.status,
                     "acquired_at": item.acquired_at.isoformat(),
                     "heartbeat_at": item.heartbeat_at.isoformat(),
