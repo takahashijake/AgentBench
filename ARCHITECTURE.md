@@ -1,4 +1,4 @@
-# AgentBench V6 Architecture
+# AgentBench V7 Architecture
 
 AgentBench V4 is organized around two invariants:
 
@@ -512,3 +512,31 @@ trial state, not a claim of exactly-once external side effects.
 
 V5 local coordinators and V6 distributed workers are mutually exclusive on one
 experiment. Multiple V6 workers may cooperate concurrently.
+
+
+## V7 capability-aware scheduling
+
+**Paths:**
+
+- `src/agentbench/resources.py`
+- `src/agentbench/services/distributed_worker.py`
+- `src/agentbench/models/database.py`
+
+`WorkerCapabilities` is normalized scheduling data: platform, logical CPU
+count, physical-memory observation, available command names, and optional labels.
+`WorkerRegistration` persists that advertisement independently of any one lease.
+
+Claiming remains transactional. The worker loads planned trials in ordinal order,
+evaluates each task's frozen `TaskRequirements` against its registered
+capabilities, and conditionally claims the first compatible row. Incompatible
+rows remain planned for another worker.
+
+This avoids turning heterogeneous infrastructure into benchmark failures and
+keeps routing policy separate from agent adapters and benchmark execution.
+
+Queue inspection is diagnostic rather than a scheduler mutation: it computes
+eligible registered owners per planned cell and reports unmatched work.
+
+Portable evidence intentionally does not export raw worker owner IDs. Local
+operational analysis retains them; result bundles expose a SHA-256 identity
+instead.
