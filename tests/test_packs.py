@@ -189,7 +189,7 @@ def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
         {"analysis_schema_version": 3, "overall": {}},
     )
 
-    assert report["report_schema_version"] == 5
+    assert report["report_schema_version"] == 6
     assert report["suite"]["benchmark_pack"]["id"] == "smoke-v2"
     assert report["suite"]["schema_version"] == 5
     assert {task["category"] for task in report["resources"]["tasks"]} == {
