@@ -1,29 +1,21 @@
-# AgentBench
+# AgentBench V2
 
-**Reproducible local benchmarking and comparison for coding agents.**
+**Reproducible benchmark packs, repeated-trial statistics, and transparent leaderboards for coding agents.**
 
-AgentBench runs coding agents against pinned Git commits in isolated worktrees,
-preserves what the agent actually changed **before tests can mutate the workspace**,
-persists comparison matrices, and locks the toolchain/environment so later replays
-can detect meaningful drift.
+AgentBench is a local-first evaluation platform for coding agents. It materializes deterministic software-engineering tasks as real Git repositories, runs agents against identical pinned commits in isolated worktrees, captures what the agent changed before tests can mutate the workspace, and turns repeated trials into uncertainty-aware comparisons.
 
-> **Portfolio V1:** installable CLI, suite manifests, experiment matrices,
-> provenance locks, replay verification, immutable run evidence, JSON/Markdown
-> reports, and a local dashboard.
+V2 moves the project beyond a benchmark harness into a complete evaluation workflow:
 
-## Why AgentBench exists
-
-Comparing coding agents is deceptively hard. A useful benchmark needs more than
-"run two CLIs and compare exit codes":
-
-- both agents must start from the same code
-- the source checkout must not be contaminated by a run
-- setup, agent execution, and tests must be bounded
-- tests must not overwrite the evidence being evaluated
-- historical experiments must not silently change when task/agent definitions do
-- a later replay should know if the agent binary or execution environment changed
-
-AgentBench treats those constraints as the product rather than as afterthoughts.
+- deterministic built-in benchmark packs
+- versioned suite manifests and reproducibility locks
+- tasks × agents × repetitions experiment matrices
+- pre-test Git evidence and immutable run artifacts
+- structured token/cost metadata extraction when agents emit JSON
+- 95% Wilson intervals for success rates
+- Student-t summaries for repeated numeric measurements
+- conservative reliability rankings
+- pairwise task-level comparisons
+- JSON, Markdown, API, and local dashboard outputs
 
 ## Quick start
 
@@ -32,7 +24,6 @@ Requires Python 3.11+ and Git.
 ```bash
 git clone https://github.com/takahashijake/AgentBench.git
 cd AgentBench
-
 python -m pip install -e ".[dev]"
 
 agentbench --version
@@ -40,13 +31,56 @@ agentbench doctor
 pytest
 ```
 
-The installed command is:
+## Run a real V2 comparison
 
-```text
-agentbench
+Materialize the portable `core-v2` corpus with the coding agents installed on your machine:
+
+```bash
+agentbench pack materialize core-v2 \
+  --output ./benchmarks/core-v2 \
+  --agent 'qwen=qwen -p "{prompt}"' \
+  --agent 'codex=codex exec "{prompt}"' \
+  --repetitions 5
 ```
 
-Run the local dashboard/API with:
+This creates four standalone Git repositories plus a schema-v2 suite manifest.
+
+Inspect and validate it:
+
+```bash
+agentbench validate ./benchmarks/core-v2/suite.yaml
+```
+
+Lock the exact benchmark definition and toolchain:
+
+```bash
+agentbench lock ./benchmarks/core-v2/suite.yaml \
+  --output ./benchmarks/core-v2/suite.lock.json
+
+agentbench verify \
+  ./benchmarks/core-v2/suite.yaml \
+  ./benchmarks/core-v2/suite.lock.json
+```
+
+Run the comparison and export both machine- and reviewer-readable reports:
+
+```bash
+agentbench replay \
+  ./benchmarks/core-v2/suite.yaml \
+  ./benchmarks/core-v2/suite.lock.json \
+  --output results/core-v2.json \
+  --markdown results/core-v2.md
+```
+
+Inspect the experiment-level leaderboard later:
+
+```bash
+agentbench leaderboard 1 \
+  --output results/leaderboard.json \
+  --markdown results/leaderboard.md
+```
+
+Launch the local evaluation UI:
 
 ```bash
 agentbench serve
@@ -54,33 +88,102 @@ agentbench serve
 
 Then open `http://127.0.0.1:8000`.
 
-## Five-minute demo
+## Built-in benchmark packs
 
-A self-hosted Qwen-vs-Codex suite is included at
-[`examples/qwen-vs-codex.yaml`](examples/qwen-vs-codex.yaml).
-
-### 1. Validate the benchmark definition
+List the available packs:
 
 ```bash
-agentbench validate examples/qwen-vs-codex.yaml
+agentbench pack list
+agentbench pack show core-v2
 ```
 
-### 2. Resolve and lock the exact benchmark
+### core-v2
 
-```bash
-mkdir -p results
+| Task | Category | Difficulty | What it probes |
+|---|---|---|---|
+| `bugfix-duration-parser` | bugfix | easy | parsing, unit conversion, focused regression repair |
+| `feature-slug-normalizer` | feature | medium | API contract implementation, string normalization |
+| `regression-ttl-cache` | regression | medium | state, time boundaries, stale-data cleanup |
+| `refactor-lazy-batching` | refactor | medium | iterator semantics, laziness, one-pass inputs |
 
-agentbench lock examples/qwen-vs-codex.yaml \
-  --output results/qwen-vs-codex.lock.json
+The `smoke-v2` pack contains the first two tasks for fast pipeline validation.
+
+Pack repositories are generated with fixed source content, commit message, author/committer identity, and timestamps. Materializing the same pack version produces the same task commit identities, making the corpus portable rather than tied to one checkout path.
+
+AgentBench intentionally ships these as **small deterministic engineering tasks**, not as a claim to replace large public benchmarks such as SWE-bench. Their role is to make the full evaluation pipeline easy to reproduce, inspect, extend, and demonstrate.
+
+## Why repeated trials matter
+
+One run is weak evidence for stochastic coding agents. V2 treats repetition as a first-class experiment dimension:
+
+```text
+tasks × agents × repetitions
 ```
 
-The lock captures:
+For every aggregate—overall, per agent, per task, and per task/agent cell—AgentBench preserves the original counts and adds descriptive uncertainty.
 
-- canonical suite-manifest SHA-256
+### Success rates
+
+V2 reports a two-sided **95% Wilson score interval** for success proportions. Wilson intervals behave substantially better than the naive `p ± 1.96·SE` interval for small samples and extreme success rates.
+
+### Runtime, token, and code-change measurements
+
+When at least two measurements exist, numeric summaries include:
+
+- total
+- average
+- median
+- minimum / maximum
+- sample standard deviation
+- two-sided 95% Student-t interval for the sample mean
+
+These are descriptive uncertainty estimates. AgentBench does not claim repeated trials are statistically independent and does not label rank differences as statistically significant.
+
+## Conservative leaderboard
+
+The V2 ranking is intentionally explicit.
+
+Agents are ordered by:
+
+1. lower bound of the 95% Wilson success-rate interval
+2. observed success rate
+3. orchestration error rate
+4. median runtime
+5. stable agent identity
+
+The first value is exposed as the **reliability score**. This makes a tiny perfect sample less likely to outrank a well-tested agent solely because it happened to go 1/1.
+
+Pairwise task comparison is even more conservative: it compares observed success rate per task. Equal-quality outcomes remain ties; runtime is not used to manufacture a task win.
+
+## Structured usage metadata
+
+The shell adapter detects common agent families such as Codex, Qwen, Claude, and Gemini from the executable name.
+
+When stdout/stderr contains complete JSON or JSONL events with recognizable usage fields, AgentBench conservatively extracts:
+
+- prompt/input tokens
+- completion/output tokens
+- total tokens
+- cached-input tokens
+- reported USD cost
+
+Only complete JSON objects are inspected. Numbers embedded in arbitrary prose are ignored.
+
+When usage is unavailable, token fields remain null and aggregate reports show token **coverage** instead of pretending missing measurements are zero.
+
+## Reproducibility lock
+
+`agentbench lock` resolves a suite into a tamper-evident identity containing bounded, non-secret inputs that materially affect replay:
+
+- suite schema and manifest SHA-256
+- benchmark-pack identity/version when present
 - exact resolved task commits
-- selected task/agent matrix and repetitions
-- agent command definitions
-- resolved agent executable identity
+- task prompt SHA-256
+- setup/test commands and timeouts
+- task category/difficulty/tags
+- selected tasks, agents, and repetitions
+- agent command templates
+- resolved executable name
 - executable version output when available
 - executable binary SHA-256
 - AgentBench version
@@ -88,43 +191,68 @@ The lock captures:
 - OS release/machine architecture
 - Git version
 
-No environment-variable dump or secrets are collected.
+It intentionally does **not** dump environment variables, credentials, home-directory state, or arbitrary machine identifiers.
 
-### 3. Verify before spending compute
+`agentbench verify` exits with code `3` when material drift is detected. `agentbench replay` fails closed instead of spending compute under a different configuration.
 
-```bash
-agentbench verify \
-  examples/qwen-vs-codex.yaml \
-  results/qwen-vs-codex.lock.json
+## Execution integrity
+
+Every trial still flows through the hardened V1 execution core:
+
+```text
+suite / pack manifest
+        │
+        ├── provenance lock / replay gate
+        ▼
+   SuiteService
+        ▼
+ ExperimentService
+        ▼
+ BenchmarkService
+        │
+        ├── verify source repository
+        ├── create detached worktree at exact commit
+        ├── bounded setup
+        ├── bounded coding-agent process
+        ├── capture Git evidence  ◀── before tests
+        ├── bounded tests
+        ├── force-clean worktree
+        └── persist BenchmarkRun + immutable artifacts
+        ▼
+ statistical analysis
+        │
+        ├── uncertainty
+        ├── leaderboard
+        └── pairwise task comparison
 ```
 
-Exit code `0` means the current suite/toolchain matches the lock. Exit code `3`
-means reproducibility drift was detected; the JSON response identifies changed
-fields.
+Core invariants include:
 
-### 4. Replay and export
+1. source repositories are not benchmark workspaces
+2. agents start from exact pinned commits
+3. prompts are argv values, not shell-interpolated strings
+4. setup/agent/test execution is bounded
+5. agent evidence is captured before tests
+6. non-ignored untracked files survive cleanup as evidence
+7. run artifact directories are unique and write-once
+8. dirty worktrees are force-removed and stale metadata is pruned
+9. benchmark failure is a measurement, not an orchestration failure
+10. experiment task/agent definitions are frozen at planning time
+11. terminal experiment cells are not silently rerun
+12. replay rejects provenance drift
 
-```bash
-agentbench replay \
-  examples/qwen-vs-codex.yaml \
-  results/qwen-vs-codex.lock.json \
-  --output results/qwen-vs-codex.json \
-  --markdown results/qwen-vs-codex.md
-```
+## Suite schema V2
 
-The JSON export is analysis-friendly. The Markdown export is designed to be
-reviewed directly in a repository, experiment log, or portfolio.
-
-For a guided walkthrough, see [docs/DEMO.md](docs/DEMO.md).
-
-## Suite format
-
-A complete benchmark comparison lives in a version-controlled YAML or JSON file:
+V2 remains backward compatible with schema-v1 suite files and adds optional corpus metadata.
 
 ```yaml
-schema_version: 1
-id: parser-comparison
-name: Parser repair comparison
+schema_version: 2
+id: my-comparison
+name: My coding-agent comparison
+
+benchmark_pack:
+  id: core-v2
+  version: 2.0.0
 
 agents:
   - id: qwen
@@ -134,117 +262,72 @@ agents:
     command_template: codex exec "{prompt}"
 
 tasks:
-  - id: parser-regression
-    description: Repair the parser without weakening tests.
-    repository_path: ../target-project
+  - id: task-a
+    description: Example benchmark task
+    repository_path: ./repositories/task-a
     base_commit: 0123456789abcdef0123456789abcdef01234567
-    agent_prompt: |
-      Fix the parser regression demonstrated by the failing tests.
-      Do not weaken, skip, or remove tests.
-    setup_command: python -m pip install -e .
-    test_command: pytest -q
+    agent_prompt: Fix the regression without weakening tests.
+    test_command: python -m unittest -q
     timeout: 600
+    category: bugfix
+    difficulty: medium
+    tags: [python, regression]
 
 experiment:
-  tasks: [parser-regression]
+  tasks: [task-a]
   agents: [qwen, codex]
-  repetitions: 3
+  repetitions: 5
   stop_on_error: false
 ```
 
-Repository paths are resolved relative to the manifest. Imported resource names
-are stable (`<suite-id>/<resource-id>`), so repeated imports update the same
-task/agent records instead of silently duplicating them.
+See [docs/MANIFEST.md](docs/MANIFEST.md) and [docs/BENCHMARK_PACKS.md](docs/BENCHMARK_PACKS.md).
 
-## Execution integrity
-
-Every benchmark run follows one path:
+## CLI surface
 
 ```text
-Suite manifest
-      │
-      ▼
-  SuiteService
-      │
-      ▼
-ExperimentService
-      │
-      ▼
- BenchmarkService
-      │
-      ├── verify source repository
-      ├── allocate write-once artifact bundle
-      ├── create detached worktree at exact commit
-      ├── run bounded setup
-      ├── run coding agent
-      ├── capture Git evidence  ◀── before tests
-      ├── run bounded tests
-      ├── force-clean worktree
-      └── persist BenchmarkRun
-```
+agentbench pack list
+agentbench pack show <pack>
+agentbench pack materialize <pack> -o <dir> --agent <id=command>...
 
-Key guarantees:
-
-1. The benchmark source checkout is not used as the run workspace.
-2. The agent starts from an exact commit in a detached worktree.
-3. Prompts are passed as argv values rather than shell-interpolated into the agent command.
-4. Setup, agent, and test processes have wall-clock bounds.
-5. Agent Git evidence is captured before tests run.
-6. Non-ignored untracked agent files are copied before cleanup.
-7. Run artifact directories are unique and write-once.
-8. Dirty worktrees are force-removed and stale worktree metadata is pruned.
-9. Agent benchmark failure is a measurement, not an experiment-orchestration failure.
-10. Experiment task/agent definitions are frozen at planning time.
-11. Terminal experiment cells are not silently executed twice.
-12. Suite replay can reject changes in commits, definitions, binaries, or environment provenance.
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for layer ownership and invariants.
-
-## Experiment engine
-
-Experiments are persisted as:
-
-```text
-tasks × agents × repetitions
-```
-
-Each cell is an `ExperimentTrial` linked to a canonical `BenchmarkRun`.
-
-Aggregates include:
-
-- planned, terminal, and produced benchmark-run counts
-- completion rate
-- success rate over the full plan
-- success rate over produced benchmark runs
-- orchestration-error count
-- tests passed/failed
-- total/average/min/max runtime
-- token totals when adapters report them
-- files changed, insertions, and deletions
-- per-agent metrics
-- per-task metrics
-- per-(task, agent) cell metrics across repetitions
-
-## CLI
-
-```text
 agentbench validate <suite>
 agentbench doctor
-agentbench lock <suite> [-o suite.lock.json]
+agentbench lock <suite>
 agentbench verify <suite> <lock>
 agentbench import <suite>
-agentbench run <suite> [--lock lock.json] [--write-lock lock.json]
+agentbench run <suite>
 agentbench replay <suite> <lock>
 agentbench results <experiment-id>
+agentbench leaderboard <experiment-id>
 agentbench serve
 ```
 
-`run`, `replay`, and `results` support JSON output with `--output` and
-human-readable Markdown with `--markdown`.
+`run`, `replay`, `results`, and `leaderboard` support JSON export; the result commands also support human-readable Markdown.
+
+## Local UI and API
+
+The local UI now has two levels:
+
+- **Experiments** — repeated-trial matrices, uncertainty, leaderboard, pairwise outcomes
+- **Runs** — canonical execution evidence and provenance for individual trials
+
+Useful V2 endpoints include:
+
+```text
+GET /api/health
+GET /api/packs
+GET /api/packs/{pack_id}
+GET /api/experiments
+GET /api/experiments/{id}/results
+GET /api/experiments/{id}/leaderboard
+GET /api/runs
+GET /api/runs/{id}
+```
+
+Interactive OpenAPI documentation remains at `/docs`.
 
 ## Run artifacts
 
-By default, immutable run bundles are stored under:
+By default, immutable run bundles live under:
 
 ```text
 ~/.local/share/agentbench/runs/
@@ -252,88 +335,56 @@ By default, immutable run bundles are stored under:
 
 Override with `AGENTBENCH_RUNS_DIR`.
 
-A run bundle can contain:
+A bundle can contain task/provenance manifests, agent/setup/test logs, pre-test Git status and binary diffs, copied untracked files, cleanup evidence, and the final run manifest.
 
-```text
-task.json
-provenance.json
-manifest.json
-cleanup.json
-agent/
-  stdout.log
-  stderr.log
-setup/
-  stdout.log
-  stderr.log
-  git-status.txt
-  diff.patch
-test/
-  stdout.log
-  stderr.log
-  git-status.txt
-  diff.patch
-git/
-  ...
-```
+## Quality assurance
 
-The Git evidence bundle preserves tracked diffs, numstat/status information,
-agent-created commits, hashes/copies of non-ignored untracked files, and aggregate
-change metrics.
+CI validates the product on Python 3.11 and 3.13 by:
 
-## Local API
+- installing the package
+- smoke-testing the installed CLI
+- listing and inspecting built-in packs
+- materializing `smoke-v2`
+- validating the generated schema-v2 suite
+- creating and verifying a reproducibility lock
+- running the complete pytest suite
 
-```bash
-agentbench serve --host 127.0.0.1 --port 8000
-```
-
-Useful endpoints include:
-
-```text
-GET  /
-GET  /dashboard
-GET  /docs
-GET  /api/agents
-GET  /api/tasks
-GET  /api/runs
-POST /api/runs
-GET  /api/experiments
-POST /api/experiments
-POST /api/experiments/{id}/run
-GET  /api/experiments/{id}/results
-```
-
-The dashboard is intentionally local-first; the benchmarking engine and CLI are
-the authoritative product surfaces.
-
-## Development
+Development:
 
 ```bash
 python -m pip install -e ".[dev]"
 pytest
 ```
 
-CI installs AgentBench as a package, smoke-tests the installed CLI, and runs the
-full test suite on Python 3.11 and 3.13.
+## Architecture
 
-The architecture intentionally keeps responsibilities separate:
+Major boundaries are deliberately separate:
 
-- `manifests.py`: suite-file validation
-- `provenance.py`: locks, environment/tool fingerprints, replay verification
-- `services/suite.py`: suite-to-persistence/service composition
-- `services/experiment.py`: matrix planning/execution/aggregation
-- `services/benchmark.py`: exactly one benchmark lifecycle
-- `adapters/`: agent invocation
-- `execution/`: bounded process lifecycle
-- `utils/git.py`: worktree lifecycle
-- `evidence.py`: pre-test Git evidence
-- `artifacts.py`: immutable per-run storage
-- `reporting.py`: presentation-only report rendering
+- `packs.py` — deterministic benchmark corpus materialization
+- `manifests.py` — suite schema and validation
+- `provenance.py` — locks, fingerprints, replay verification
+- `services/suite.py` — workflow composition
+- `services/experiment.py` — matrix execution and persisted aggregation
+- `statistics.py` — uncertainty, ranking, pairwise analysis
+- `services/benchmark.py` — exactly one benchmark lifecycle
+- `adapters/` — agent invocation
+- `usage.py` — conservative structured usage extraction
+- `execution/` — bounded process lifecycle
+- `evidence.py` — pre-test Git evidence
+- `artifacts.py` — write-once result storage
+- `reporting.py` — presentation only
+- `api/` and `cli.py` — transport and product composition
+
+See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Project status
 
-AgentBench V1 is a complete local benchmarking foundation. The next expansion
-area is **benchmark-corpus depth and statistical comparison**: curated task packs,
-native adapter metadata/token accounting, confidence intervals across repetitions,
-and richer ranking/reporting without weakening the reproducibility core.
+**AgentBench V2 is the portfolio release for local coding-agent evaluation.**
 
-See [CHANGELOG.md](CHANGELOG.md) for the V1 release summary.
+It can now answer a concrete question end to end:
+
+> Given the same deterministic engineering corpus and the same repeated-trial policy, which coding agent appears more reliable, what uncertainty surrounds that measurement, how do they compare task-by-task, and can the entire result be replayed against the same code and toolchain?
+
+The next major direction is corpus scale and stronger inferential comparison: larger task packs, native agent adapters, paired statistical tests where assumptions are defensible, result-bundle import/export, and public benchmark-result publication.
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
