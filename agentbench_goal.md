@@ -1,97 +1,99 @@
 # AgentBench multi-session objective
 
-Continue developing AgentBench into a trustworthy local coding-agent benchmarking and comparison platform.
+AgentBench has reached **Portfolio V1**. Preserve the reproducibility core and
+expand benchmark depth rather than rebuilding the execution architecture.
 
-## First action in every fresh session
+## First action in every fresh coding-agent session
 
 Read `ARCHITECTURE.md`, then run:
 
 ```bash
-PYTHONPATH=src pytest -q
+pytest
 ```
 
 If QA fails, repair the regression before adding features.
 
-## Current completed foundations
+## V1 completed product
 
-### Single-run benchmark integrity
+### Benchmark integrity
 
-The benchmark core already provides:
-
-- detached worktree isolation at an exact base commit
+- exact Git commit worktree isolation
 - safe argv-based agent prompt invocation
 - bounded setup/agent/test execution
 - process-tree termination on timeout
-- pre-test Git evidence capture
-- tracked + non-ignored untracked change preservation
+- evidence capture before tests
+- tracked + non-ignored untracked evidence preservation
 - unique write-once artifact bundles
 - forced dirty-worktree cleanup
-- deterministic integration coverage
 
-### Experiment matrix / comparison engine
+### Comparison engine
 
-`ExperimentService` provides:
+- persisted `tasks × agents × repetitions` matrices
+- deterministic trial ordering
+- frozen task/agent definitions
+- drift rejection
+- benchmark failure vs orchestration-error separation
+- idempotent terminal trials
+- overall/per-agent/per-task/per-cell aggregates
 
-```text
-tasks × agents × repetitions
-```
+### Suite workflow
 
-with persisted `ExperimentTrial` cells, execution through the existing `BenchmarkService`, idempotent handling of terminal trials, frozen definitions, drift rejection, and aggregate overall/per-agent/per-task/per-cell metrics.
+- versioned YAML/JSON manifests
+- deterministic validation and manifest digest
+- stable idempotent resource imports
+- installed `agentbench` CLI
+- JSON and Markdown exports
 
-Do not duplicate either execution layer.
+### Reproducibility provenance
 
-### Versioned suite manifests and CLI
+- exact resolved task commits
+- task prompt digests
+- agent executable/version/binary fingerprints
+- AgentBench/Python/platform/Git identity
+- canonical tamper-evident lock files
+- verify/replay drift gate
+- per-run provenance artifacts
 
-AgentBench now supports reproducible YAML/JSON suite files with:
+### Presentation
 
-- schema-versioned validation
-- stable suite/task/agent identifiers
-- relative repository-path resolution
-- canonical manifest SHA-256 digests
-- idempotent task/agent import
-- deterministic experiment planning from manifest selection order
-- CLI commands for validate/import/run/results
-- machine-readable JSON suite reports
-- end-to-end tests proving the suite path still executes through `ExperimentService` and `BenchmarkService`
+- packaged local dashboard
+- five-minute demo
+- self-hosted Qwen-vs-Codex example suite
+- V1 changelog and architecture documentation
+- CI installation + CLI smoke test + Python 3.11/3.13 QA
 
-The suite layer lives in:
+## Next major direction
 
-- `src/agentbench/manifests.py`
-- `src/agentbench/services/suite.py`
-- `src/agentbench/cli.py`
+Build **benchmark corpus + statistical comparison depth** while keeping every V1
+integrity invariant.
 
-Do not reimplement experiment or benchmark execution there.
+Recommended sequence:
 
-## Next major milestone
+1. curated multi-task benchmark packs with deterministic fixtures
+2. native adapter metadata/token accounting for Qwen/Codex/other agents
+3. repeated-trial statistics and confidence intervals
+4. ranking/report views based only on persisted measurements
+5. exportable benchmark-pack results suitable for public comparison
 
-Build **reproducibility provenance + lock/replay support**.
+Do not prioritize cloud deployment, authentication, distributed workers, or
+LLM-as-a-judge before the benchmark corpus itself is strong.
 
-A strong next implementation should include:
+## Preserve layer ownership
 
-- capture of the concrete agent executable/version used for each run
-- lightweight environment fingerprints relevant to reproducibility
-- a lock artifact containing resolved task commits, agent definitions, manifest digest, and execution metadata
-- a replay/verify path that can detect material drift before running
-- deterministic serialization suitable for committing alongside benchmark reports
-- tests that prove identical inputs yield the same lock identity and meaningful drift is rejected or surfaced clearly
+- manifests: file validation
+- provenance: locks/fingerprints/replay verification
+- suite service: workflow composition
+- experiment service: matrix semantics
+- benchmark service: one run lifecycle
+- adapters: agent invocation
+- execution: process lifecycle
+- Git utils: worktrees
+- evidence: pre-test evidence
+- artifacts: write-once storage
+- reporting: presentation only
+- API/CLI: transport and composition
 
-Avoid collecting huge environment dumps or secrets. Prefer a bounded, documented provenance contract.
-
-## Preserve these boundaries
-
-- API: transport only
-- manifests/CLI: versioned definitions and workflow composition only
-- services/experiment.py: matrix planning/execution/aggregation
-- services/benchmark.py: one benchmark run
-- adapters/: agent invocation
-- execution/: process lifecycle
-- utils/git.py: worktree lifecycle
-- evidence.py: benchmark evidence
-- artifacts.py: immutable artifacts
-- models/schemas: persistence
-
-Do not prioritize dashboards, cloud deployment, authentication, distributed workers, or LLM-as-a-judge ahead of reproducibility provenance.
-
-Each fresh Qwen session should implement one bounded high-value slice, run tests, fix regressions, and leave one concise next objective.
+Each coding-agent pass should implement one bounded high-value slice, run QA, fix
+regressions, and leave the repository in a coherent state.
 
 Do not commit or push from Qwen sessions.
