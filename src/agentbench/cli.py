@@ -11,6 +11,7 @@ from typing import Any, Optional, Sequence
 from pydantic import ValidationError
 
 from . import __version__
+from .adapters import create_adapter_registry
 from .manifests import LoadedSuiteManifest, load_suite_manifest
 from .models.session import close_session, get_session, init_db
 from .packs import get_pack, list_packs, materialize_pack, parse_agent_spec
@@ -160,6 +161,24 @@ def _build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Repeated trials per task/agent cell (default: 5).",
     )
+
+    adapter = subparsers.add_parser(
+        "adapter",
+        help="Inspect registered coding-agent adapter profiles.",
+    )
+    adapter_subparsers = adapter.add_subparsers(
+        dest="adapter_command",
+        required=True,
+    )
+    adapter_subparsers.add_parser(
+        "list",
+        help="List adapter profiles and declared capabilities.",
+    )
+    adapter_show = adapter_subparsers.add_parser(
+        "show",
+        help="Show one adapter profile.",
+    )
+    adapter_show.add_argument("adapter_id")
 
     validate = subparsers.add_parser(
         "validate",
@@ -396,6 +415,30 @@ def _run_database_command(args: argparse.Namespace) -> int:
         close_session()
 
 
+def _run_adapter_command(args: argparse.Namespace) -> int:
+    registry = create_adapter_registry(discover_plugins=True)
+    if args.adapter_command == "list":
+        _write_json(
+            {
+                "adapters": registry.catalog(),
+                "providers": list(registry.provider_ids),
+                "discovery_errors": list(registry.discovery_errors),
+            }
+        )
+        return 0
+
+    if args.adapter_command == "show":
+        resolved = registry.get(args.adapter_id)
+        row = next(
+            item for item in registry.catalog()
+            if item["id"] == resolved.profile.id
+        )
+        _write_json(row)
+        return 0
+
+    raise ValueError(f"Unsupported adapter command: {args.adapter_command}")
+
+
 def _run_pack_command(args: argparse.Namespace) -> int:
     if args.pack_command == "list":
         _write_json({"packs": list_packs()})
@@ -431,6 +474,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         if args.command == "pack":
             return _run_pack_command(args)
+
+        if args.command == "adapter":
+            return _run_adapter_command(args)
 
         if args.command == "validate":
             loaded = load_suite_manifest(args.manifest)
