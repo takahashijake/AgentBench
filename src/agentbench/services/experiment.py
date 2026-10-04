@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Optional
 
@@ -23,6 +24,16 @@ from ..statistics import (
 from ..resources import HostResourceInspector, TaskRequirements
 from ..timeutils import utc_now
 from .benchmark import BenchmarkService
+
+
+@dataclass(frozen=True)
+class TrialExecutionOutcome:
+    """Detached scalar outcome for one claimed experiment trial."""
+
+    trial_id: int
+    status: str
+    benchmark_run_id: int | None = None
+    error: str | None = None
 
 
 class ExperimentNotFoundError(ValueError):
@@ -239,67 +250,66 @@ class ExperimentService:
             raise ExperimentNotFoundError(f"Experiment not found: {experiment_id}")
         return experiment
 
-    def execute_experiment(self, experiment_id: int) -> Experiment:
-        """Run all still-planned trials without re-running terminal trials."""
-        experiment = self.get_experiment(experiment_id)
-        running_trials = (
-            self.db.query(ExperimentTrial)
-            .filter(
-                ExperimentTrial.experiment_id == experiment.id,
-                ExperimentTrial.status == "running",
-            )
-            .count()
-        )
-        if running_trials:
-            raise ExperimentBusyError(
-                f"Experiment {experiment.id} already has running trials"
-            )
+    def execute_trial(self, trial_id: int) -> TrialExecutionOutcome:
+        """Atomically claim and execute one planned trial.
 
-        pending = (
+        The status transition from planned -> running is conditional, so two
+        independent worker sessions cannot execute the same trial.
+        """
+
+        started_at = utc_now()
+        claimed = (
             self.db.query(ExperimentTrial)
             .filter(
-                ExperimentTrial.experiment_id == experiment.id,
+                ExperimentTrial.id == int(trial_id),
                 ExperimentTrial.status == "planned",
             )
-            .order_by(ExperimentTrial.ordinal.asc())
-            .all()
+            .update(
+                {
+                    ExperimentTrial.status: "running",
+                    ExperimentTrial.started_at: started_at,
+                    ExperimentTrial.completed_at: None,
+                    ExperimentTrial.error: None,
+                },
+                synchronize_session=False,
+            )
         )
-        if not pending:
-            self._finalize_status(experiment)
-            self.db.commit()
-            self.db.refresh(experiment)
-            return experiment
-
-        if experiment.started_at is None:
-            experiment.started_at = utc_now()
-        if experiment.status == "failed":
-            experiment.completed_at = None
-        experiment.status = "running"
         self.db.commit()
 
-        stopped_early = False
-        task_snapshots = self._snapshots_by_id(list(experiment.task_snapshots))
-        for trial in pending:
+        trial = (
+            self.db.query(ExperimentTrial)
+            .filter(ExperimentTrial.id == int(trial_id))
+            .one_or_none()
+        )
+        if trial is None:
+            raise ValueError(f"Experiment trial not found: {trial_id}")
+        if claimed != 1:
+            if trial.status == "running":
+                raise ExperimentBusyError(f"Experiment trial {trial_id} is already running")
+            return TrialExecutionOutcome(
+                trial_id=int(trial.id),
+                status=str(trial.status),
+                benchmark_run_id=(
+                    int(trial.benchmark_run_id)
+                    if trial.benchmark_run_id is not None
+                    else None
+                ),
+                error=trial.error,
+            )
+
+        experiment = self.get_experiment(int(trial.experiment_id))
+        try:
+            task_snapshots = self._snapshots_by_id(list(experiment.task_snapshots))
             requirements = TaskRequirements.from_mapping(
                 task_snapshots.get(trial.task_id, {}).get("requirements")
             )
             eligibility = self.resource_inspector.evaluate(requirements)
             if not eligibility.eligible:
                 trial.status = "skipped"
-                trial.started_at = utc_now()
-                trial.completed_at = trial.started_at
                 trial.error = "Resource requirements not satisfied: " + "; ".join(
                     eligibility.reasons
                 )
-                self.db.commit()
-                continue
-
-            trial.status = "running"
-            trial.started_at = utc_now()
-            trial.error = None
-            self.db.commit()
-
-            try:
+            else:
                 task = (
                     self.db.query(BenchmarkTask)
                     .filter(BenchmarkTask.id == trial.task_id)
@@ -317,18 +327,117 @@ class ExperimentService:
                 )
                 trial.benchmark_run_id = run.id
                 trial.status = "completed"
-            except Exception as exc:
-                trial.status = "error"
-                trial.error = f"{type(exc).__name__}: {exc}"
-                if experiment.stop_on_error:
-                    stopped_early = True
-            finally:
-                trial.completed_at = utc_now()
-                self.db.commit()
+        except Exception as exc:
+            trial.status = "error"
+            trial.error = f"{type(exc).__name__}: {exc}"
+        finally:
+            trial.completed_at = utc_now()
+            self.db.commit()
 
-            if stopped_early:
+        return TrialExecutionOutcome(
+            trial_id=int(trial.id),
+            status=str(trial.status),
+            benchmark_run_id=(
+                int(trial.benchmark_run_id)
+                if trial.benchmark_run_id is not None
+                else None
+            ),
+            error=trial.error,
+        )
+
+    def recover_running_trials(self, experiment_id: int) -> int:
+        """Reset interrupted running claims to planned for an explicit resume."""
+
+        experiment = self.get_experiment(experiment_id)
+        recovered = (
+            self.db.query(ExperimentTrial)
+            .filter(
+                ExperimentTrial.experiment_id == experiment.id,
+                ExperimentTrial.status == "running",
+            )
+            .update(
+                {
+                    ExperimentTrial.status: "planned",
+                    ExperimentTrial.started_at: None,
+                    ExperimentTrial.completed_at: None,
+                    ExperimentTrial.error: None,
+                },
+                synchronize_session=False,
+            )
+        )
+        if recovered:
+            experiment.status = "pending"
+            experiment.completed_at = None
+        self.db.commit()
+        self.db.refresh(experiment)
+        return int(recovered)
+
+    def execute_experiment(
+        self,
+        experiment_id: int,
+        *,
+        max_workers: int = 1,
+    ) -> Experiment:
+        """Run still-planned trials with deterministic bounded local concurrency."""
+
+        if max_workers < 1 or max_workers > 32:
+            raise ValueError("max_workers must be between 1 and 32")
+        if max_workers > 1:
+            from .local_executor import LocalParallelExperimentExecutor
+
+            return LocalParallelExperimentExecutor(self).execute(
+                experiment_id,
+                max_workers=max_workers,
+            )
+
+        experiment = self.get_experiment(experiment_id)
+        running_trials = (
+            self.db.query(ExperimentTrial)
+            .filter(
+                ExperimentTrial.experiment_id == experiment.id,
+                ExperimentTrial.status == "running",
+            )
+            .count()
+        )
+        if running_trials:
+            raise ExperimentBusyError(
+                f"Experiment {experiment.id} already has running trials"
+            )
+
+        pending_ids = [
+            int(value)
+            for (value,) in (
+                self.db.query(ExperimentTrial.id)
+                .filter(
+                    ExperimentTrial.experiment_id == experiment.id,
+                    ExperimentTrial.status == "planned",
+                )
+                .order_by(ExperimentTrial.ordinal.asc())
+                .all()
+            )
+        ]
+        if not pending_ids:
+            self._finalize_status(experiment)
+            self.db.commit()
+            self.db.refresh(experiment)
+            return experiment
+
+        if experiment.started_at is None:
+            experiment.started_at = utc_now()
+        if experiment.status == "failed":
+            experiment.completed_at = None
+        experiment.status = "running"
+        self.db.commit()
+
+        stopped_early = False
+        for trial_id in pending_ids:
+            outcome = self.execute_trial(trial_id)
+            if outcome.status == "error" and experiment.stop_on_error:
+                stopped_early = True
                 break
 
+        self.db.expire_all()
+        experiment = self.get_experiment(experiment_id)
         if stopped_early:
             remaining = (
                 self.db.query(ExperimentTrial)
