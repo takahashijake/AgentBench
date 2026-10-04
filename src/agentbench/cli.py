@@ -21,6 +21,12 @@ from .packs import (
     preflight_pack,
 )
 from .preflight import preflight_suite
+from .publication import (
+    PublicationValidationError,
+    publish_bundle,
+    publish_experiment,
+    verify_publication,
+)
 from .provenance import (
     build_suite_lock,
     environment_identity,
@@ -376,6 +382,35 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     bundle_extract.add_argument("bundle")
     bundle_extract.add_argument("--output", "-o", required=True)
+
+    publish = subparsers.add_parser(
+        "publish",
+        help="Create or verify a deterministic static evidence site.",
+    )
+    publish_subparsers = publish.add_subparsers(
+        dest="publish_command",
+        required=True,
+    )
+
+    publish_experiment_parser = publish_subparsers.add_parser(
+        "experiment",
+        help="Publish one persisted experiment through verified bundle semantics.",
+    )
+    publish_experiment_parser.add_argument("experiment_id", type=int)
+    publish_experiment_parser.add_argument("--output", "-o", required=True)
+
+    publish_bundle_parser = publish_subparsers.add_parser(
+        "bundle",
+        help="Publish an already-verified portable result bundle.",
+    )
+    publish_bundle_parser.add_argument("bundle")
+    publish_bundle_parser.add_argument("--output", "-o", required=True)
+
+    publish_verify_parser = publish_subparsers.add_parser(
+        "verify",
+        help="Verify publication identity and every declared static payload.",
+    )
+    publish_verify_parser.add_argument("publication")
     return parser
 
 
@@ -542,6 +577,16 @@ def _run_database_command(args: argparse.Namespace) -> int:
                 return 0
             raise ValueError(f"Unsupported worker command: {args.worker_command}")
 
+        if args.command == "publish" and args.publish_command == "experiment":
+            _write_json(
+                publish_experiment(
+                    db,
+                    args.experiment_id,
+                    args.output,
+                )
+            )
+            return 0
+
         if args.command == "results":
             report = _experiment_report(service, args.experiment_id)
             _write_markdown(report, args.markdown)
@@ -677,6 +722,25 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _write_json(response)
             return 0 if verification["valid"] else 3
 
+        if args.command == "publish":
+            if args.publish_command == "bundle":
+                _write_json(publish_bundle(args.bundle, args.output))
+                return 0
+            if args.publish_command == "verify":
+                verified = verify_publication(args.publication)
+                _write_json(
+                    {
+                        "valid": True,
+                        "path": str(verified.path),
+                        "identity_sha256": verified.identity_sha256,
+                        "source_bundle_identity_sha256": verified.manifest.get(
+                            "source_bundle_identity_sha256"
+                        ),
+                        "experiment": verified.manifest.get("experiment"),
+                    }
+                )
+                return 0
+
         if args.command == "bundle":
             if args.bundle_command == "verify":
                 verified = verify_result_bundle(args.bundle)
@@ -705,6 +769,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ExperimentBusyError,
         ExperimentNotFoundError,
         BundleValidationError,
+        PublicationValidationError,
     ) as exc:
         print(
             json.dumps(
