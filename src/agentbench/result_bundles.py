@@ -175,6 +175,7 @@ def _portable_task_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
         "test_command": snapshot.get("test_command"),
         "timeout": snapshot.get("timeout"),
         "enabled": snapshot.get("enabled"),
+        "requirements": snapshot.get("requirements") or {},
     }
 
 
@@ -200,7 +201,7 @@ class ResultBundleService:
 
     def _report(self, experiment: Any, summary: dict[str, Any]) -> dict[str, Any]:
         return {
-            "report_schema_version": 3,
+            "report_schema_version": 4,
             "experiment": {
                 "id": int(experiment.id),
                 "name": experiment.name,
