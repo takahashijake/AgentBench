@@ -46,7 +46,10 @@ class TaskRequirements:
         object.__setattr__(self, "required_commands", normalized_commands)
 
     def as_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload["supported_platforms"] = list(self.supported_platforms)
+        payload["required_commands"] = list(self.required_commands)
+        return payload
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any] | None) -> "TaskRequirements":
