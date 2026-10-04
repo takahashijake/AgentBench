@@ -39,6 +39,33 @@ class ManifestBenchmarkPack(BaseModel):
     description: Optional[str] = None
 
 
+class ManifestTaskRequirements(BaseModel):
+    """Declarative host requirements for one benchmark task."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    min_cpu_count: int = Field(default=1, ge=1, le=1024)
+    min_memory_mb: Optional[int] = Field(default=None, ge=1)
+    supported_platforms: list[str] = Field(default_factory=list)
+    required_commands: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def normalize_and_validate(self) -> "ManifestTaskRequirements":
+        self.supported_platforms = [
+            value.strip().lower() for value in self.supported_platforms
+        ]
+        self.required_commands = [value.strip() for value in self.required_commands]
+        if any(not value for value in self.supported_platforms):
+            raise ValueError("supported_platforms must not contain empty values")
+        if any(not value for value in self.required_commands):
+            raise ValueError("required_commands must not contain empty values")
+        if len(self.supported_platforms) != len(set(self.supported_platforms)):
+            raise ValueError("supported_platforms must not contain duplicates")
+        if len(self.required_commands) != len(set(self.required_commands)):
+            raise ValueError("required_commands must not contain duplicates")
+        return self
+
+
 class ManifestTask(BaseModel):
     """One benchmark task definition in a suite manifest."""
 
@@ -61,6 +88,9 @@ class ManifestTask(BaseModel):
     category: Optional[str] = Field(default=None, min_length=1, max_length=64)
     difficulty: Optional[str] = Field(default=None, min_length=1, max_length=64)
     tags: list[str] = Field(default_factory=list)
+    requirements: ManifestTaskRequirements = Field(
+        default_factory=ManifestTaskRequirements
+    )
 
 
 class ManifestExperiment(BaseModel):
@@ -92,7 +122,7 @@ class SuiteManifest(BaseModel):
 
     @model_validator(mode="after")
     def validate_manifest(self) -> "SuiteManifest":
-        if self.schema_version not in {1, 2, 3}:
+        if self.schema_version not in {1, 2, 3, 4}:
             raise ValueError(
                 f"Unsupported suite manifest schema_version: {self.schema_version}"
             )
@@ -219,6 +249,7 @@ __all__ = [
     "ManifestBenchmarkPack",
     "ManifestExperiment",
     "ManifestTask",
+    "ManifestTaskRequirements",
     "SuiteManifest",
     "load_suite_manifest",
 ]

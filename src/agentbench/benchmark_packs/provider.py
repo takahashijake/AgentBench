@@ -101,6 +101,7 @@ class PackRegistry:
                             "category": task.category,
                             "difficulty": task.difficulty,
                             "tags": list(task.tags),
+                            "requirements": task.requirements.as_dict(),
                         }
                         for task in pack.tasks
                     ],

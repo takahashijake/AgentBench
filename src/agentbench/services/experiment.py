@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,7 @@ from ..statistics import (
     numeric_summary,
     wilson_interval,
 )
+from ..resources import HostResourceInspector, TaskRequirements
 from ..timeutils import utc_now
 from .benchmark import BenchmarkService
 
@@ -35,7 +36,7 @@ class ExperimentBusyError(RuntimeError):
 class ExperimentService:
     """Execute tasks × agents × repetitions using BenchmarkService."""
 
-    TERMINAL_TRIAL_STATUSES = {"completed", "error"}
+    TERMINAL_TRIAL_STATUSES = {"completed", "error", "skipped"}
     MAX_PLANNED_RUNS = 10_000
 
     def __init__(
@@ -45,12 +46,14 @@ class ExperimentService:
         setup_timeout: int = 300,
         test_timeout: Optional[int] = None,
         benchmark_service: Optional[BenchmarkService] = None,
+        resource_inspector: Optional[HostResourceInspector] = None,
     ):
         self.db = db
         if benchmark_service is not None and benchmark_service.db is not db:
             raise ValueError(
                 "Injected BenchmarkService must use the same database session"
             )
+        self.resource_inspector = resource_inspector or HostResourceInspector()
         self.benchmark_service = benchmark_service or BenchmarkService(
             db,
             artifact_root=artifact_root,
@@ -96,7 +99,10 @@ class ExperimentService:
         return [by_id[agent_id] for agent_id in agent_ids]
 
     @staticmethod
-    def _task_snapshot(task: BenchmarkTask) -> dict[str, Any]:
+    def _task_snapshot(
+        task: BenchmarkTask,
+        requirements: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         return {
             "id": task.id,
             "name": task.name,
@@ -108,6 +114,7 @@ class ExperimentService:
             "test_command": task.test_command,
             "timeout": task.timeout,
             "enabled": task.enabled,
+            "requirements": TaskRequirements.from_mapping(requirements).as_dict(),
         }
 
     @staticmethod
@@ -140,7 +147,13 @@ class ExperimentService:
         expected_task = task_snapshots.get(task.id)
         expected_agent = agent_snapshots.get(agent.id)
 
-        if expected_task is None or self._task_snapshot(task) != expected_task:
+        expected_requirements = (
+            expected_task.get("requirements") if expected_task is not None else None
+        )
+        if (
+            expected_task is None
+            or self._task_snapshot(task, expected_requirements) != expected_task
+        ):
             raise ValueError(
                 f"Benchmark task definition drifted after experiment planning: {task.id}"
             )
@@ -158,6 +171,7 @@ class ExperimentService:
         repetitions: int = 1,
         description: Optional[str] = None,
         stop_on_error: bool = False,
+        task_requirements: Mapping[int, Mapping[str, Any]] | None = None,
     ) -> Experiment:
         name = name.strip()
         if not name:
@@ -184,7 +198,13 @@ class ExperimentService:
             status="pending",
             task_ids=normalized_tasks,
             agent_config_ids=normalized_agents,
-            task_snapshots=[self._task_snapshot(task) for task in tasks],
+            task_snapshots=[
+                self._task_snapshot(
+                    task,
+                    (task_requirements or {}).get(int(task.id)),
+                )
+                for task in tasks
+            ],
             agent_snapshots=[self._agent_snapshot(agent) for agent in agents],
             planned_runs=planned_runs,
         )
@@ -258,7 +278,22 @@ class ExperimentService:
         self.db.commit()
 
         stopped_early = False
+        task_snapshots = self._snapshots_by_id(list(experiment.task_snapshots))
         for trial in pending:
+            requirements = TaskRequirements.from_mapping(
+                task_snapshots.get(trial.task_id, {}).get("requirements")
+            )
+            eligibility = self.resource_inspector.evaluate(requirements)
+            if not eligibility.eligible:
+                trial.status = "skipped"
+                trial.started_at = utc_now()
+                trial.completed_at = trial.started_at
+                trial.error = "Resource requirements not satisfied: " + "; ".join(
+                    eligibility.reasons
+                )
+                self.db.commit()
+                continue
+
             trial.status = "running"
             trial.started_at = utc_now()
             trial.error = None
@@ -344,6 +379,7 @@ class ExperimentService:
         successful = [run for run in benchmark_runs if run.success is True]
         failed = [run for run in benchmark_runs if run.success is False]
         errors = [trial for trial in trials if trial.status == "error"]
+        skipped = [trial for trial in trials if trial.status == "skipped"]
         terminal_trials = sum(
             trial.status in ExperimentService.TERMINAL_TRIAL_STATUSES
             for trial in trials
@@ -369,7 +405,10 @@ class ExperimentService:
         insertion_summary = numeric_summary(insertions)
         deletion_summary = numeric_summary(deletions)
 
-        success_rate = (len(successful) / planned) if planned else None
+        eligible_planned = planned - len(skipped)
+        success_rate = (
+            len(successful) / eligible_planned if eligible_planned else None
+        )
         benchmark_success_rate = (
             len(successful) / len(benchmark_runs) if benchmark_runs else None
         )
@@ -380,6 +419,8 @@ class ExperimentService:
             "completion_rate": (terminal_trials / planned) if planned else None,
             "benchmark_runs": len(benchmark_runs),
             "orchestration_errors": len(errors),
+            "skipped_runs": len(skipped),
+            "eligible_planned_runs": eligible_planned,
             "successful_runs": len(successful),
             "failed_runs": len(failed),
             "success_rate": success_rate,
@@ -415,7 +456,7 @@ class ExperimentService:
             "statistics": {
                 "success_rate_confidence_interval_95": wilson_interval(
                     len(successful),
-                    planned,
+                    eligible_planned,
                 ),
                 "benchmark_success_rate_confidence_interval_95": wilson_interval(
                     len(successful),
@@ -491,7 +532,7 @@ class ExperimentService:
         ]
 
         return {
-            "analysis_schema_version": 3,
+            "analysis_schema_version": 4,
             "experiment_id": experiment.id,
             "name": experiment.name,
             "status": experiment.status,

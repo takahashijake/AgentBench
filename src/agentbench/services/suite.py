@@ -193,6 +193,15 @@ class SuiteService:
             agent_config_ids=bindings.selected_agent_config_ids,
             repetitions=definition.repetitions,
             stop_on_error=definition.stop_on_error,
+            task_requirements={
+                bindings.task_ids[resource_id]: tasks_by_resource.requirements.model_dump(
+                    mode="json"
+                )
+                for resource_id, tasks_by_resource in {
+                    item.id: item for item in loaded.manifest.tasks
+                }.items()
+                if resource_id in loaded.manifest.selected_task_ids()
+            },
         )
 
     def execute_suite(
@@ -219,7 +228,7 @@ class SuiteService:
         tasks_by_id = {item.id: item for item in loaded.manifest.tasks}
         agents_by_id = {item.id: item for item in loaded.manifest.agents}
         return {
-            "report_schema_version": 3,
+            "report_schema_version": 4,
             "suite": {
                 "id": loaded.manifest.id,
                 "name": loaded.manifest.name,
@@ -254,6 +263,9 @@ class SuiteService:
                         "category": tasks_by_id[resource_id].category,
                         "difficulty": tasks_by_id[resource_id].difficulty,
                         "tags": list(tasks_by_id[resource_id].tags),
+                        "requirements": tasks_by_id[
+                            resource_id
+                        ].requirements.model_dump(mode="json"),
                     }
                     for resource_id in loaded.manifest.selected_task_ids()
                 ],
