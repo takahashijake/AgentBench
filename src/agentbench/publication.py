@@ -297,7 +297,9 @@ def verify_publication(path: str | Path) -> VerifiedPublication:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise PublicationValidationError(\n            "publication.json is not valid UTF-8 JSON"\n        ) from exc
+        raise PublicationValidationError(
+            "publication.json is not valid UTF-8 JSON"
+        ) from exc
     if not isinstance(manifest, dict):
         raise PublicationValidationError("publication.json root must be an object")
     if manifest.get("publication_schema_version") != PUBLICATION_SCHEMA_VERSION:
@@ -321,14 +323,18 @@ def verify_publication(path: str | Path) -> VerifiedPublication:
             raise PublicationValidationError("Invalid publication file entry")
         name = str(item.get("path") or "")
         if name not in _PUBLICATION_FILES:
-            raise PublicationValidationError(\n                f"Unexpected publication payload: {name!r}"\n            )
+            raise PublicationValidationError(
+                f"Unexpected publication payload: {name!r}"
+            )
         declared_names.append(name)
         candidate = root / name
         if not candidate.is_file() or candidate.is_symlink():
             raise PublicationValidationError(f"Publication payload is missing: {name}")
         data = candidate.read_bytes()
         if len(data) != int(item.get("size", -1)):
-            raise PublicationValidationError(\n                f"Size mismatch for publication file: {name}"\n            )
+            raise PublicationValidationError(
+                f"Size mismatch for publication file: {name}"
+            )
         if _sha256_bytes(data) != item.get("sha256"):
             raise PublicationValidationError(
                 f"Digest mismatch for publication file: {name}"
