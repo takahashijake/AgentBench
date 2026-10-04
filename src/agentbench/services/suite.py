@@ -208,7 +208,6 @@ class SuiteService:
         self,
         loaded: LoadedSuiteManifest,
         *,
-        max_workers: int = 1,
     ) -> tuple[SuiteImportResult, Experiment, dict[str, Any]]:
         """Import, plan, execute, and aggregate a complete suite."""
 
@@ -216,7 +215,7 @@ class SuiteService:
         experiment = self.create_experiment(loaded, imported)
         experiment = self.experiments.execute_experiment(
             experiment.id,
-            max_workers=max_workers,
+            max_workers=loaded.manifest.experiment.max_workers,
         )
         summary = self.experiments.aggregate_experiment(experiment.id)
         return imported, experiment, summary
@@ -233,7 +232,7 @@ class SuiteService:
         tasks_by_id = {item.id: item for item in loaded.manifest.tasks}
         agents_by_id = {item.id: item for item in loaded.manifest.agents}
         return {
-            "report_schema_version": 4,
+            "report_schema_version": 5,
             "suite": {
                 "id": loaded.manifest.id,
                 "name": loaded.manifest.name,

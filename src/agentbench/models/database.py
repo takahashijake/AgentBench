@@ -133,6 +133,33 @@ class Experiment(Base):
         cascade="all, delete-orphan",
         order_by="ExperimentTrial.ordinal",
     )
+    executions = relationship(
+        "ExperimentExecution",
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        order_by="ExperimentExecution.id",
+    )
+
+
+class ExperimentExecution(Base):
+    """One persisted execution attempt for an experiment."""
+
+    __tablename__ = "experiment_executions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    experiment_id = Column(
+        Integer, ForeignKey("experiments.id"), nullable=False, index=True
+    )
+    mode = Column(String(64), nullable=False)
+    max_workers = Column(Integer, nullable=False, default=1)
+    status = Column(String(64), nullable=False, default="running")
+    details = Column(JSON, nullable=True)
+    started_at = Column(DateTime, nullable=False, default=utc_now)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    experiment = relationship("Experiment", back_populates="executions")
 
 
 class ExperimentTrial(Base):

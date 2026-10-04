@@ -104,6 +104,7 @@ class ManifestExperiment(BaseModel):
     agents: Optional[list[str]] = Field(default=None, min_length=1)
     repetitions: int = Field(default=1, ge=1, le=100)
     stop_on_error: bool = False
+    max_workers: int = Field(default=1, ge=1, le=32)
 
 
 class SuiteManifest(BaseModel):
@@ -122,7 +123,7 @@ class SuiteManifest(BaseModel):
 
     @model_validator(mode="after")
     def validate_manifest(self) -> "SuiteManifest":
-        if self.schema_version not in {1, 2, 3, 4}:
+        if self.schema_version not in {1, 2, 3, 4, 5}:
             raise ValueError(
                 f"Unsupported suite manifest schema_version: {self.schema_version}"
             )
