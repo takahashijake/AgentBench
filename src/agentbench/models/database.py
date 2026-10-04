@@ -168,6 +168,22 @@ class ExperimentExecution(Base):
     experiment = relationship("Experiment", back_populates="executions")
 
 
+class WorkerRegistration(Base):
+    """Durable worker identity and normalized scheduling capabilities."""
+
+    __tablename__ = "worker_registrations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_id = Column(String(255), nullable=False, unique=True, index=True)
+    status = Column(String(64), nullable=False, default="active", index=True)
+    capabilities = Column(JSON, nullable=False)
+    metadata_json = Column(JSON, nullable=True)
+    registered_at = Column(DateTime, nullable=False, default=utc_now)
+    heartbeat_at = Column(DateTime, nullable=False, default=utc_now)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+
 class ExperimentWorkerAttempt(Base):
     """Durable cross-process ownership record for one trial claim."""
 
