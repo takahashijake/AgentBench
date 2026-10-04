@@ -44,9 +44,14 @@ class ExperimentService:
         artifact_root: Optional[Path] = None,
         setup_timeout: int = 300,
         test_timeout: Optional[int] = None,
+        benchmark_service: Optional[BenchmarkService] = None,
     ):
         self.db = db
-        self.benchmark_service = BenchmarkService(
+        if benchmark_service is not None and benchmark_service.db is not db:
+            raise ValueError(
+                "Injected BenchmarkService must use the same database session"
+            )
+        self.benchmark_service = benchmark_service or BenchmarkService(
             db,
             artifact_root=artifact_root,
             setup_timeout=setup_timeout,
