@@ -23,6 +23,7 @@ nav:
       - Running Benchmarks: guides/running-benchmarks.md
       - Interpreting Results: guides/interpreting-results.md
       - Publishing Results: guides/publishing-results.md
+      - Regression Gates: guides/regression-gates.md
       - Extensions: EXTENSIONS.md
       - Result Bundles: RESULT_BUNDLES.md
   - Reference:
