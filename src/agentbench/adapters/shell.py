@@ -8,8 +8,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from .base import AgentAdapter
+from .telemetry import StructuredJsonTelemetryParser, UsageTelemetry
 from ..execution import ProcessResult, run_process
-from ..usage import detect_agent_family, extract_usage_metadata
+from ..usage import detect_agent_family
 
 
 class ShellAgentAdapter(AgentAdapter):
@@ -18,6 +19,7 @@ class ShellAgentAdapter(AgentAdapter):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.last_result: Optional[ProcessResult] = None
+        self.telemetry_parser = StructuredJsonTelemetryParser()
 
     def prepare(self, repository_path: Path, base_commit: str) -> Path:
         repo_path = Path(repository_path)
@@ -70,6 +72,14 @@ class ShellAgentAdapter(AgentAdapter):
     def process_result(self) -> Optional[ProcessResult]:
         return self.last_result
 
+    def usage_telemetry(self) -> Optional[UsageTelemetry]:
+        if self.last_result is None:
+            return None
+        return self.telemetry_parser.parse(
+            self.last_result.stdout,
+            self.last_result.stderr,
+        )
+
     def terminate(self) -> None:
         # run_process owns and tears down the complete process group on timeout.
         return None
@@ -95,9 +105,10 @@ class ShellAgentAdapter(AgentAdapter):
                     "timed_out": self.last_result.timed_out,
                     "process_duration_seconds": self.last_result.duration_seconds,
                     "returncode": self.last_result.returncode,
-                    "usage": extract_usage_metadata(
-                        self.last_result.stdout,
-                        self.last_result.stderr,
+                    "usage": (
+                        self.usage_telemetry().as_dict()
+                        if self.usage_telemetry() is not None
+                        else None
                     ),
                 }
             )
