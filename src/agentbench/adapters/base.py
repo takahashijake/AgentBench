@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from ..execution import ProcessResult
+from .telemetry import UsageTelemetry
 
 
 class AgentAdapter(ABC):
@@ -46,6 +47,10 @@ class AgentAdapter(ABC):
 
     def process_result(self) -> Optional[ProcessResult]:
         """Return the bounded process result when the adapter exposes one."""
+        return None
+
+    def usage_telemetry(self) -> Optional[UsageTelemetry]:
+        """Return typed usage telemetry when the adapter can provide it."""
         return None
 
     def set_output_paths(self, stdout_path: Path, stderr_path: Path) -> None:
