@@ -2,7 +2,7 @@
 
 Run `agentbench --help` and subcommand help for the installed version.
 
-## Readiness and discovery
+## Discovery and readiness
 
 ```text
 agentbench doctor
@@ -12,12 +12,21 @@ agentbench pack preflight <pack>
 agentbench preflight <suite>
 ```
 
-`pack preflight` checks a pack's declarative host requirements before materialization. `preflight <suite>` additionally verifies selected task repositories/base commits and selected agent executable availability. Both return exit code `3` when the input is valid but the current host is not ready.
-
-## Benchmark workflow
+## Materialize a locked execution policy
 
 ```text
-agentbench pack materialize <pack> -o <dir> --agent <id=command>...
+agentbench pack materialize <pack> -o <dir> \
+  --agent <id=command>... \
+  --repetitions <n> \
+  --workers <1-32>
+```
+
+The generated schema-5 manifest stores `experiment.max_workers`. Suite
+`run`/`replay` always use that locked value.
+
+## Reproducible suite workflow
+
+```text
 agentbench validate <suite>
 agentbench lock <suite>
 agentbench verify <suite> <lock>
@@ -27,6 +36,19 @@ agentbench replay <suite> <lock>
 agentbench results <experiment-id>
 agentbench leaderboard <experiment-id>
 ```
+
+## Persisted experiment execution and recovery
+
+```text
+agentbench execute <experiment-id> --workers <1-32>
+agentbench recover <experiment-id> --confirm-inactive
+```
+
+`execute` is for an already-persisted experiment and records the chosen worker
+count in execution history. It is not a substitute for locked suite replay.
+
+`recover` is deliberately explicit. Use it only after confirming the prior
+worker process is gone; otherwise resetting a live claim could duplicate work.
 
 ## Portable results and local UI
 
@@ -38,4 +60,5 @@ agentbench bundle extract <file.zip> -o <directory>
 agentbench serve
 ```
 
-Human-readable output is the default for reports; machine-readable JSON is used for validation/readiness/discovery surfaces and reusable report outputs. Invalid input/runtime errors return a non-zero status with an actionable JSON error. Resource/readiness mismatch is distinct from invalid input and uses exit code `3`.
+Readiness mismatch uses exit code `3`; invalid input/runtime errors use exit
+code `2`.

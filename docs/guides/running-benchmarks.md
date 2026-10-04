@@ -11,7 +11,8 @@ agentbench pack materialize core-v3 \
   --output ./benchmarks/core-v3 \
   --agent 'qwen=qwen -p "{prompt}"' \
   --agent 'codex=codex exec "{prompt}"' \
-  --repetitions 5
+  --repetitions 5 \
+  --workers 4
 
 agentbench validate ./benchmarks/core-v3/suite.yaml
 agentbench preflight ./benchmarks/core-v3/suite.yaml
@@ -23,3 +24,24 @@ agentbench replay ./benchmarks/core-v3/suite.yaml ./benchmarks/core-v3/suite.loc
 ```
 
 Do not edit a locked suite and continue as though it is the same experiment. Verification is designed to fail closed when material inputs drift.
+
+
+## Parallel execution
+
+V5 local parallelism is a **suite input**, not a hidden runtime optimization.
+Materialization writes `experiment.max_workers`; locking/replay preserve it.
+
+Workers never share a SQLAlchemy session. Different task repositories can execute
+concurrently. Trials that share a source repository are serialized around the Git
+worktree lifecycle to avoid repository-metadata races.
+
+For a manually persisted experiment, `agentbench execute <id> --workers N`
+records a separate execution attempt with the chosen worker count.
+
+If a process is interrupted, do not blindly reset running cells. First confirm no
+worker remains, then run:
+
+```bash
+agentbench recover <experiment-id> --confirm-inactive
+agentbench execute <experiment-id> --workers 4
+```

@@ -172,6 +172,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Repeated trials per task/agent cell (default: 5).",
     )
+    pack_materialize.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Locked local worker count for suite execution (1-32).",
+    )
 
     preflight = subparsers.add_parser(
         "preflight",
@@ -248,6 +254,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Optional path to persist the newly verified current lock.",
     )
     _add_report_outputs(replay)
+
+    execute = subparsers.add_parser(
+        "execute",
+        help="Resume/execute a persisted experiment by ID.",
+    )
+    execute.add_argument("experiment_id", type=int)
+    execute.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Bounded local worker count for independent trial execution (1-32).",
+    )
+
+    recover = subparsers.add_parser(
+        "recover",
+        help="Reset interrupted running trial claims to planned for explicit resume.",
+    )
+    recover.add_argument("experiment_id", type=int)
+    recover.add_argument(
+        "--confirm-inactive",
+        action="store_true",
+        help="Required acknowledgement that no worker process is still executing.",
+    )
 
     results = subparsers.add_parser(
         "results",
@@ -344,14 +373,17 @@ def _experiment_report(
 ) -> dict[str, Any]:
     experiment = service.experiments.get_experiment(experiment_id)
     summary = service.experiments.aggregate_experiment(experiment_id)
+    latest_execution = summary.get("latest_execution") or {}
     return {
-        "report_schema_version": 3,
+        "report_schema_version": 5,
         "experiment": {
             "id": int(experiment.id),
             "name": experiment.name,
             "status": experiment.status,
             "repetitions": experiment.repetitions,
             "stop_on_error": experiment.stop_on_error,
+            "max_workers": latest_execution.get("max_workers"),
+            "execution_mode": latest_execution.get("mode"),
             "planned_runs": experiment.planned_runs,
         },
         "summary": summary,
@@ -373,6 +405,40 @@ def _run_database_command(args: argparse.Namespace) -> int:
         if args.command in {"run", "replay"}:
             return _run_suite(args, service)
 
+        if args.command == "execute":
+            experiment = service.experiments.execute_experiment(
+                args.experiment_id,
+                max_workers=args.workers,
+            )
+            summary = service.experiments.aggregate_experiment(experiment.id)
+            _write_json(
+                {
+                    "experiment": {
+                        "id": int(experiment.id),
+                        "name": experiment.name,
+                        "status": experiment.status,
+                        "planned_runs": experiment.planned_runs,
+                    },
+                    "summary": summary,
+                }
+            )
+            return 0
+
+        if args.command == "recover":
+            if not args.confirm_inactive:
+                raise ValueError(
+                    "recover requires --confirm-inactive because resetting a live "
+                    "worker claim can duplicate benchmark execution"
+                )
+            recovered = service.experiments.recover_running_trials(args.experiment_id)
+            _write_json(
+                {
+                    "experiment_id": args.experiment_id,
+                    "recovered_trials": recovered,
+                }
+            )
+            return 0
+
         if args.command == "results":
             report = _experiment_report(service, args.experiment_id)
             _write_markdown(report, args.markdown)
@@ -383,7 +449,7 @@ def _run_database_command(args: argparse.Namespace) -> int:
             report = _experiment_report(service, args.experiment_id)
             summary = report["summary"]
             payload = {
-                "analysis_schema_version": summary.get("analysis_schema_version", 3),
+                "analysis_schema_version": summary.get("analysis_schema_version", 5),
                 "experiment": report["experiment"],
                 "ranking": summary.get("ranking"),
                 "pairwise_task_comparison": summary.get(
@@ -437,6 +503,7 @@ def _run_pack_command(args: argparse.Namespace) -> int:
             args.output,
             agents=agents,
             repetitions=args.repetitions,
+            max_workers=args.workers,
         )
         loaded = load_suite_manifest(result["manifest_path"])
         result["manifest_sha256"] = loaded.sha256

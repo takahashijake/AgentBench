@@ -212,7 +212,10 @@ class SuiteService:
 
         imported = self.import_suite(loaded)
         experiment = self.create_experiment(loaded, imported)
-        experiment = self.experiments.execute_experiment(experiment.id)
+        experiment = self.experiments.execute_experiment(
+            experiment.id,
+            max_workers=loaded.manifest.experiment.max_workers,
+        )
         summary = self.experiments.aggregate_experiment(experiment.id)
         return imported, experiment, summary
 
@@ -228,7 +231,7 @@ class SuiteService:
         tasks_by_id = {item.id: item for item in loaded.manifest.tasks}
         agents_by_id = {item.id: item for item in loaded.manifest.agents}
         return {
-            "report_schema_version": 4,
+            "report_schema_version": 5,
             "suite": {
                 "id": loaded.manifest.id,
                 "name": loaded.manifest.name,
@@ -248,6 +251,7 @@ class SuiteService:
                 "status": experiment.status,
                 "repetitions": experiment.repetitions,
                 "stop_on_error": experiment.stop_on_error,
+                "max_workers": loaded.manifest.experiment.max_workers,
                 "planned_runs": experiment.planned_runs,
             },
             "resources": {

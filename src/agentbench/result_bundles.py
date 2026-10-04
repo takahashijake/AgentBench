@@ -201,7 +201,7 @@ class ResultBundleService:
 
     def _report(self, experiment: Any, summary: dict[str, Any]) -> dict[str, Any]:
         return {
-            "report_schema_version": 4,
+            "report_schema_version": 5,
             "experiment": {
                 "id": int(experiment.id),
                 "name": experiment.name,
@@ -250,6 +250,26 @@ class ResultBundleService:
             "agent_snapshots": [
                 _portable_agent_snapshot(snapshot)
                 for snapshot in experiment.agent_snapshots
+            ],
+            "executions": [
+                {
+                    "id": int(item.id),
+                    "mode": item.mode,
+                    "max_workers": int(item.max_workers),
+                    "status": item.status,
+                    "details": dict(item.details or {}),
+                    "started_at": (
+                        item.started_at.isoformat()
+                        if item.started_at is not None
+                        else None
+                    ),
+                    "completed_at": (
+                        item.completed_at.isoformat()
+                        if item.completed_at is not None
+                        else None
+                    ),
+                }
+                for item in experiment.executions
             ],
             "trials": trials,
         }

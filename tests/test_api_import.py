@@ -7,7 +7,7 @@ def test_api_import_and_mapper_configuration():
     from agentbench.api import TEMPLATES_DIR, app
 
     assert app.title == "AgentBench Local"
-    assert app.version == "4.0.0"
+    assert app.version == "5.0.0"
 
     paths = set(app.openapi()["paths"])
     assert "/" in paths

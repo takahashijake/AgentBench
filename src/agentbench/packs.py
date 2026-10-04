@@ -95,6 +95,7 @@ def materialize_pack(
     *,
     agents: Iterable[dict[str, str]],
     repetitions: int = 5,
+    max_workers: int = 1,
     registry: PackRegistry | None = None,
 ) -> dict[str, Any]:
     result = PackMaterializer(registry or default_pack_registry()).materialize(
@@ -102,6 +103,7 @@ def materialize_pack(
         output_dir,
         agents=agents,
         repetitions=repetitions,
+        max_workers=max_workers,
     )
     return result.as_dict()
 

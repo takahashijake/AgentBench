@@ -1,5 +1,39 @@
 # Changelog
 
+## 5.0.0 — Bounded Local Parallel Execution
+
+### Execution engine
+
+- added bounded local parallel trial scheduling (1–32 workers)
+- each worker owns an independent SQLAlchemy session and BenchmarkService
+- added atomic experiment coordinator leasing and atomic planned-to-running trial claims
+- serialize Git lifecycle per source repository while allowing independent repositories to overlap
+- parallel stop-on-error stops new scheduling while allowing in-flight work to finish
+
+### Persistence and recovery
+
+- added additive `experiment_executions` history table
+- persist mode, max worker count, status, timestamps, and bounded execution details
+- explicit recovery resets stale running claims only with user acknowledgement
+- abandoned running execution attempts are marked `interrupted`
+
+### Reproducibility
+
+- suite manifest schema 5 adds `experiment.max_workers`
+- suite-lock schema 4 locks worker count and detects concurrency drift
+- analysis/report schema 5 expose execution history/latest execution
+- portable result bundles include execution attempts
+- suite run/replay use locked worker count; no hidden concurrency override
+
+### Product surface
+
+- AgentBench package/API version 5.0.0
+- `agentbench execute <experiment-id> --workers N`
+- `agentbench recover <experiment-id> --confirm-inactive`
+- pack materialization accepts `--workers N`
+- local UI and Markdown reports expose latest execution mode/worker count
+
+
 ## 4.0.0 — Benchmark Ecosystem and Resource-aware Execution
 
 ### Corpus

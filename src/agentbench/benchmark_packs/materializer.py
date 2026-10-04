@@ -36,6 +36,7 @@ class PackMaterializationResult:
     task_count: int
     agent_count: int
     repetitions: int
+    max_workers: int
     planned_runs: int
     commits: dict[str, str]
 
@@ -49,6 +50,7 @@ class PackMaterializationResult:
             "task_count": self.task_count,
             "agent_count": self.agent_count,
             "repetitions": self.repetitions,
+            "max_workers": self.max_workers,
             "planned_runs": self.planned_runs,
             "commits": dict(self.commits),
         }
@@ -127,6 +129,7 @@ class PackMaterializer:
         *,
         agents: Iterable[dict[str, str]],
         repetitions: int = 5,
+        max_workers: int = 1,
     ) -> PackMaterializationResult:
         resolved = self.registry.get(pack_id)
         pack = resolved.pack
@@ -145,6 +148,8 @@ class PackMaterializer:
             raise ValueError("Agent IDs must be unique")
         if repetitions < 1 or repetitions > 100:
             raise ValueError("repetitions must be between 1 and 100")
+        if max_workers < 1 or max_workers > 32:
+            raise ValueError("max_workers must be between 1 and 32")
 
         repo_root = destination / "repositories"
         repo_root.mkdir()
@@ -173,7 +178,7 @@ class PackMaterializer:
             )
 
         manifest = {
-            "schema_version": 4,
+            "schema_version": 5,
             "id": f"agentbench-{pack.id}",
             "name": pack.name,
             "description": pack.description,
@@ -190,6 +195,7 @@ class PackMaterializer:
                 "agents": ids,
                 "repetitions": repetitions,
                 "stop_on_error": False,
+                "max_workers": max_workers,
             },
         }
         manifest_path = destination / "suite.yaml"
@@ -208,6 +214,7 @@ class PackMaterializer:
             task_count=len(pack.tasks),
             agent_count=len(normalized_agents),
             repetitions=repetitions,
+            max_workers=max_workers,
             planned_runs=len(pack.tasks) * len(normalized_agents) * repetitions,
             commits=commits,
         )

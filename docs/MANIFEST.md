@@ -6,14 +6,15 @@ AgentBench accepts YAML or JSON suite manifests.
 - **schema_version 2** — V2 benchmark-pack metadata
 - **schema_version 3** — V3 provider identity for extensible corpora
 - **schema_version 4** — V4 declarative task host requirements
+- **schema_version 5** — V5 locked local execution concurrency
 
-All four remain readable in V4.
+All five remain readable in V5.
 
 ## Top level
 
 | Field | Required | Meaning |
 |---|---|---|
-| `schema_version` | yes | `1`, `2`, `3`, or `4` |
+| `schema_version` | yes | `1`, `2`, `3`, `4`, or `5` |
 | `id` | yes | stable suite identifier |
 | `name` | no | display name |
 | `description` | no | human description |
@@ -107,13 +108,13 @@ commands, task definitions, selections, or other semantic fields do.
 
 ## Suite locks
 
-V4 writers emit:
+V5 writers emit:
 
 ```json
-{"lock_schema_version": 3}
+{"lock_schema_version": 4}
 ```
 
-Lock schemas 1 and 2 remain readable. This is important for diagnosing historical V2
+Lock schemas 1, 2, and 3 remain readable. This is important for diagnosing historical V2
 locks: an old lock can be loaded even though replay verification may correctly
 report environment/version/configuration drift.
 
@@ -170,3 +171,34 @@ Requirements are normalized into the manifest identity, suite lock, experiment t
 Before each trial, AgentBench evaluates the frozen requirements. An incompatible host produces a `skipped` trial before agent execution.
 
 Use `agentbench pack preflight <pack>` to inspect compatibility before materialization or a larger benchmark run.
+
+
+## V5 execution policy
+
+Schema 5 experiments may lock bounded local concurrency:
+
+```yaml
+experiment:
+  tasks: [parser-fix]
+  agents: [qwen, codex]
+  repetitions: 5
+  stop_on_error: false
+  max_workers: 4
+```
+
+`max_workers` must be between 1 and 32. It participates in canonical manifest
+identity and suite-lock identity. `agentbench run` and `agentbench replay` use
+the worker count from the manifest; there is intentionally no unrecorded runtime
+override.
+
+Parallel workers use independent SQLAlchemy sessions. AgentBench serializes the
+full Git lifecycle for trials backed by the same source repository while allowing
+different repositories to execute concurrently.
+
+With `stop_on_error: true`, AgentBench stops scheduling new cells after the
+first orchestration error; work already in flight is allowed to finish.
+
+A crashed local execution may leave `running` claims. After confirming no worker
+process remains, use `agentbench recover <experiment-id> --confirm-inactive`.
+Recovery resets those claims to planned and marks the abandoned execution attempt
+`interrupted`.
