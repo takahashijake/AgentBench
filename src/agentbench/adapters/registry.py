@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 from .base import AgentAdapter
 from .shell import ShellAgentAdapter
+from ..usage import detect_agent_family
 
 
 AdapterFactory = Callable[[dict[str, Any]], AgentAdapter]
@@ -58,7 +59,9 @@ class AdapterRegistry:
         normalized["adapter"] = key
         normalized.setdefault(
             "agent_family",
-            executable if key == "shell" else key,
+            detect_agent_family(str(normalized.get("command_template") or ""))
+            if key == "shell"
+            else key,
         )
         return self._factories[key](normalized)
 
