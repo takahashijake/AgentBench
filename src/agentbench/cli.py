@@ -14,7 +14,13 @@ from . import __version__
 from .adapters import create_adapter_registry
 from .manifests import LoadedSuiteManifest, load_suite_manifest
 from .models.session import close_session, get_session, init_db
-from .packs import get_pack, list_packs, materialize_pack, parse_agent_spec
+from .packs import (
+    compare_packs,
+    get_pack,
+    list_packs,
+    materialize_pack,
+    parse_agent_spec,
+)
 from .provenance import (
     build_suite_lock,
     environment_identity,
@@ -135,6 +141,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show one built-in pack and its tasks.",
     )
     pack_show.add_argument("pack_id")
+    pack_compare = pack_subparsers.add_parser(
+        "compare",
+        help="Explain semantic result compatibility between two pack versions.",
+    )
+    pack_compare.add_argument("left_pack_id")
+    pack_compare.add_argument("right_pack_id")
     pack_materialize = pack_subparsers.add_parser(
         "materialize",
         help="Create deterministic Git fixtures and a runnable suite manifest.",
@@ -448,6 +460,10 @@ def _run_pack_command(args: argparse.Namespace) -> int:
         pack = get_pack(args.pack_id)
         payload = next(row for row in list_packs() if row["id"] == pack.id)
         _write_json(payload)
+        return 0
+
+    if args.pack_command == "compare":
+        _write_json(compare_packs(args.left_pack_id, args.right_pack_id))
         return 0
 
     if args.pack_command == "materialize":
