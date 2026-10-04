@@ -11,7 +11,6 @@ from typing import Any, Optional, Sequence
 from pydantic import ValidationError
 
 from . import __version__
-
 from .manifests import LoadedSuiteManifest, load_suite_manifest
 from .models.session import close_session, get_session, init_db
 from .provenance import (
@@ -92,9 +91,12 @@ def _add_report_outputs(parser: argparse.ArgumentParser) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agentbench",
-        description=(
-            "Reproducible local benchmarking and comparison for coding agents."
-        ),
+        description="Reproducible local benchmarking and comparison for coding agents.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"AgentBench {__version__}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -104,10 +106,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     validate.add_argument("manifest")
 
-    doctor = subparsers.add_parser(
+    subparsers.add_parser(
         "doctor",
         help="Show the bounded environment identity used for reproducibility.",
     )
+
+    serve = subparsers.add_parser(
+        "serve",
+        help="Run the local AgentBench dashboard and API.",
+    )
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--reload", action="store_true")
 
     lock = subparsers.add_parser(
         "lock",
@@ -191,9 +201,8 @@ def _run_suite(
     service: SuiteService,
 ) -> int:
     loaded = load_suite_manifest(args.manifest)
-    expected_lock_path = (
-        args.lock if args.command == "run" else args.lock
-    )
+    expected_lock_path = getattr(args, "lock", None)
+
     if expected_lock_path:
         current_lock = _verify_or_raise(loaded, expected_lock_path)
     else:
@@ -205,6 +214,7 @@ def _run_suite(
     imported, experiment, summary = service.execute_suite(loaded)
     report = service.build_report(loaded, imported, experiment, summary)
     report["lock"] = current_lock
+
     _write_markdown(report, args.markdown)
     _write_json(report, args.output)
     return 0
@@ -260,11 +270,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             return 0
 
         if args.command == "doctor":
-            _write_json(
-                {
-                    "status": "ok",
-                    "environment": environment_identity(),
-                }
+            _write_json({"status": "ok", "environment": environment_identity()})
+            return 0
+
+        if args.command == "serve":
+            import uvicorn
+
+            uvicorn.run(
+                "agentbench.api:app",
+                host=args.host,
+                port=args.port,
+                reload=args.reload,
             )
             return 0
 
@@ -304,10 +320,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ) as exc:
         print(
             json.dumps(
-                {
-                    "error": type(exc).__name__,
-                    "detail": str(exc),
-                },
+                {"error": type(exc).__name__, "detail": str(exc)},
                 sort_keys=True,
             ),
             file=sys.stderr,
