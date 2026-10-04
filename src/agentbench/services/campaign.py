@@ -112,6 +112,7 @@ class CampaignService:
             self.db.add(member)
             self.db.commit()
             self.db.refresh(member)
+            member_database_id = int(member.id)
 
             try:
                 imported, experiment, summary = self.suites.execute_suite(item.suite)
@@ -122,35 +123,59 @@ class CampaignService:
                     summary,
                 )
                 report["lock"] = item.lock
-                member.experiment_id = int(experiment.id)
-                member.report_json = report
-                member.status = (
+                terminal_status = (
                     "completed" if experiment.status == "completed" else "failed"
                 )
-                if member.status == "failed":
+                (
+                    self.db.query(CampaignMemberRun)
+                    .filter(CampaignMemberRun.id == member_database_id)
+                    .update(
+                        {
+                            CampaignMemberRun.experiment_id: int(experiment.id),
+                            CampaignMemberRun.report_json: report,
+                            CampaignMemberRun.status: terminal_status,
+                            CampaignMemberRun.completed_at: utc_now(),
+                        },
+                        synchronize_session=False,
+                    )
+                )
+                if terminal_status == "failed":
                     failed = True
             except Exception as exc:
                 self.db.rollback()
-                member = (
+                (
                     self.db.query(CampaignMemberRun)
-                    .filter(CampaignMemberRun.id == int(member.id))
-                    .one()
+                    .filter(CampaignMemberRun.id == member_database_id)
+                    .update(
+                        {
+                            CampaignMemberRun.status: "error",
+                            CampaignMemberRun.error: f"{type(exc).__name__}: {exc}",
+                            CampaignMemberRun.completed_at: utc_now(),
+                        },
+                        synchronize_session=False,
+                    )
                 )
-                member.status = "error"
-                member.error = f"{type(exc).__name__}: {exc}"
                 failed = True
-            member.completed_at = utc_now()
             self.db.commit()
 
             if failed and loaded.manifest.stop_on_error:
                 break
 
-        campaign = self.get_campaign(int(campaign.id))
-        campaign.status = "failed" if failed else "completed"
-        campaign.completed_at = utc_now()
+        campaign_id = int(campaign.id)
+        (
+            self.db.query(Campaign)
+            .filter(Campaign.id == campaign_id)
+            .update(
+                {
+                    Campaign.status: "failed" if failed else "completed",
+                    Campaign.completed_at: utc_now(),
+                },
+                synchronize_session=False,
+            )
+        )
         self.db.commit()
-        self.db.refresh(campaign)
-        return campaign
+        self.db.expire_all()
+        return self.get_campaign(campaign_id)
 
     @staticmethod
     def _aggregate(campaign: Campaign) -> dict[str, Any]:
@@ -207,7 +232,7 @@ class CampaignService:
             {"agent_name": name, **values} for name, values in sorted(totals.items())
         ]
         ranking = _campaign_ranking(by_agent)
-        overall = {
+        overall: dict[str, Any] = {
             key: sum(int(row[key]) for row in by_agent)
             for key in (
                 "eligible_planned_runs",
