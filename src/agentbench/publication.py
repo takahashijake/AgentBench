@@ -107,7 +107,7 @@ def _render_worker_summary(report: dict[str, Any]) -> str:
         return "<p>No distributed-worker activity was recorded.</p>"
     owners = workers.get("owners") or []
     return (
-        "<dl class=\"stats\">"
+        '<dl class="stats">'
         f"<div><dt>Worker attempts</dt><dd>{_fmt_number(workers.get('attempt_count'))}</dd></div>"
         f"<div><dt>Active leases</dt><dd>{_fmt_number(workers.get('active_count'))}</dd></div>"
         f"<div><dt>Expired active leases</dt><dd>{_fmt_number(workers.get('expired_active_count'))}</dd></div>"
@@ -130,7 +130,7 @@ def render_publication_html(
     title = str(experiment.get("name") or "AgentBench experiment")
     description = experiment.get("description")
     description_html = (
-        f"<p class=\"lede\">{escape(str(description))}</p>" if description else ""
+        f'<p class="lede">{escape(str(description))}</p>' if description else ""
     )
     source_short = escape(source_bundle_identity[:16])
 
@@ -175,11 +175,11 @@ footer {{ color:var(--muted); margin-top:32px; font-size:.9rem; }}
 </header>
 
 <div class="grid">
-<div class="card"><strong>{escape(str(experiment.get("status","unknown")))}</strong><span>experiment status</span></div>
+<div class="card"><strong>{escape(str(experiment.get("status", "unknown")))}</strong><span>experiment status</span></div>
 <div class="card"><strong>{_fmt_number(overall.get("successful_runs"))}</strong><span>successful runs</span></div>
 <div class="card"><strong>{_fmt_percent(overall.get("success_rate"))}</strong><span>eligible success rate</span></div>
-<div class="card"><strong>{_fmt_number(overall.get("skipped_runs",0))}</strong><span>resource-skipped runs</span></div>
-<div class="card"><strong>{escape(str(latest.get("mode","n/a")))}</strong><span>latest execution mode</span></div>
+<div class="card"><strong>{_fmt_number(overall.get("skipped_runs", 0))}</strong><span>resource-skipped runs</span></div>
+<div class="card"><strong>{escape(str(latest.get("mode", "n/a")))}</strong><span>latest execution mode</span></div>
 <div class="card"><strong>{_fmt_number(latest.get("max_workers"))}</strong><span>latest worker count</span></div>
 </div>
 
@@ -297,7 +297,7 @@ def verify_publication(path: str | Path) -> VerifiedPublication:
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise PublicationValidationError("publication.json is not valid UTF-8 JSON") from exc
+        raise PublicationValidationError(\n            "publication.json is not valid UTF-8 JSON"\n        ) from exc
     if not isinstance(manifest, dict):
         raise PublicationValidationError("publication.json root must be an object")
     if manifest.get("publication_schema_version") != PUBLICATION_SCHEMA_VERSION:
@@ -321,14 +321,14 @@ def verify_publication(path: str | Path) -> VerifiedPublication:
             raise PublicationValidationError("Invalid publication file entry")
         name = str(item.get("path") or "")
         if name not in _PUBLICATION_FILES:
-            raise PublicationValidationError(f"Unexpected publication payload: {name!r}")
+            raise PublicationValidationError(\n                f"Unexpected publication payload: {name!r}"\n            )
         declared_names.append(name)
         candidate = root / name
         if not candidate.is_file() or candidate.is_symlink():
             raise PublicationValidationError(f"Publication payload is missing: {name}")
         data = candidate.read_bytes()
         if len(data) != int(item.get("size", -1)):
-            raise PublicationValidationError(f"Size mismatch for publication file: {name}")
+            raise PublicationValidationError(\n                f"Size mismatch for publication file: {name}"\n            )
         if _sha256_bytes(data) != item.get("sha256"):
             raise PublicationValidationError(
                 f"Digest mismatch for publication file: {name}"

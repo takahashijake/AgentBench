@@ -289,7 +289,7 @@ def test_publication_verifier_rejects_tampering_and_undeclared_files(tmp_path: P
     tampered = tmp_path / "tampered-site"
     publish_bundle(bundle, tampered)
     (tampered / "index.html").write_text("tampered", encoding="utf-8")
-    with pytest.raises(PublicationValidationError, match="Digest mismatch"):
+    with pytest.raises(PublicationValidationError, match="(?:Size|Digest) mismatch"):
         verify_publication(tampered)
 
     extra = tmp_path / "extra-site"
