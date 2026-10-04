@@ -252,11 +252,7 @@ class ExperimentService:
         return experiment
 
     def execute_trial(self, trial_id: int) -> TrialExecutionOutcome:
-        """Atomically claim and execute one planned trial.
-
-        The status transition from planned -> running is conditional, so two
-        independent worker sessions cannot execute the same trial.
-        """
+        """Atomically claim and execute one planned trial."""
 
         started_at = utc_now()
         claimed = (
@@ -298,6 +294,23 @@ class ExperimentService:
                     else None
                 ),
                 error=trial.error,
+            )
+        return self.execute_claimed_trial(int(trial.id))
+
+    def execute_claimed_trial(self, trial_id: int) -> TrialExecutionOutcome:
+        """Execute a trial that already has durable running ownership."""
+
+        trial = (
+            self.db.query(ExperimentTrial)
+            .filter(ExperimentTrial.id == int(trial_id))
+            .one_or_none()
+        )
+        if trial is None:
+            raise ValueError(f"Experiment trial not found: {trial_id}")
+        if trial.status != "running":
+            raise ExperimentBusyError(
+                f"Experiment trial {trial_id} must be running before execution; "
+                f"status={trial.status!r}"
             )
 
         experiment = self.get_experiment(int(trial.experiment_id))

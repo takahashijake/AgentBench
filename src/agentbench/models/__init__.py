@@ -7,6 +7,7 @@ from .database import (
     BenchmarkTask,
     Experiment,
     ExperimentExecution,
+    ExperimentWorkerAttempt,
     ExperimentTrial,
 )
 from .session import (
@@ -26,6 +27,7 @@ __all__ = [
     "BenchmarkRun",
     "Experiment",
     "ExperimentExecution",
+    "ExperimentWorkerAttempt",
     "ExperimentTrial",
     "init_db",
     "get_session",

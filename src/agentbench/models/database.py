@@ -139,6 +139,12 @@ class Experiment(Base):
         cascade="all, delete-orphan",
         order_by="ExperimentExecution.id",
     )
+    worker_attempts = relationship(
+        "ExperimentWorkerAttempt",
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        order_by="ExperimentWorkerAttempt.id",
+    )
 
 
 class ExperimentExecution(Base):
@@ -160,6 +166,33 @@ class ExperimentExecution(Base):
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     experiment = relationship("Experiment", back_populates="executions")
+
+
+class ExperimentWorkerAttempt(Base):
+    """Durable cross-process ownership record for one trial claim."""
+
+    __tablename__ = "experiment_worker_attempts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    experiment_id = Column(
+        Integer, ForeignKey("experiments.id"), nullable=False, index=True
+    )
+    trial_id = Column(
+        Integer, ForeignKey("experiment_trials.id"), nullable=False, index=True
+    )
+    owner_id = Column(String(255), nullable=False, index=True)
+    lease_token = Column(String(64), nullable=False, unique=True, index=True)
+    status = Column(String(64), nullable=False, default="active", index=True)
+    acquired_at = Column(DateTime, nullable=False, default=utc_now)
+    heartbeat_at = Column(DateTime, nullable=False, default=utc_now)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    completed_at = Column(DateTime, nullable=True)
+    details = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    experiment = relationship("Experiment", back_populates="worker_attempts")
+    trial = relationship("ExperimentTrial", back_populates="worker_attempts")
 
 
 class ExperimentTrial(Base):
@@ -206,3 +239,9 @@ class ExperimentTrial(Base):
     task = relationship("BenchmarkTask")
     agent_config = relationship("AgentConfig")
     benchmark_run = relationship("BenchmarkRun")
+    worker_attempts = relationship(
+        "ExperimentWorkerAttempt",
+        back_populates="trial",
+        cascade="all, delete-orphan",
+        order_by="ExperimentWorkerAttempt.id",
+    )
