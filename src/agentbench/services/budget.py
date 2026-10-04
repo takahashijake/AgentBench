@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 
 from ..models.database import (
     BenchmarkRun,
-    Experiment,
     ExperimentBudget,
     ExperimentBudgetReservation,
     ExperimentTrial,

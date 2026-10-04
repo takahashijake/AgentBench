@@ -130,6 +130,7 @@ class PackMaterializer:
         agents: Iterable[dict[str, str]],
         repetitions: int = 5,
         max_workers: int = 1,
+        budget: dict[str, int] | None = None,
     ) -> PackMaterializationResult:
         resolved = self.registry.get(pack_id)
         pack = resolved.pack
@@ -196,6 +197,7 @@ class PackMaterializer:
                 "repetitions": repetitions,
                 "stop_on_error": False,
                 "max_workers": max_workers,
+                **({"budget": dict(budget)} if budget else {}),
             },
         }
         manifest_path = destination / "suite.yaml"

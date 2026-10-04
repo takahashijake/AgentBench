@@ -36,6 +36,7 @@ from .result_bundles import (
     inspect_result_bundle,
     verify_result_bundle,
 )
+from .services.budget import ExperimentBudgetService
 from .services.distributed_worker import DistributedWorkerService
 from .services.experiment import ExperimentBusyError, ExperimentNotFoundError
 from .services.suite import SuiteService
@@ -179,6 +180,10 @@ def _build_parser() -> argparse.ArgumentParser:
         default=1,
         help="Locked local worker count for suite execution (1-32).",
     )
+    pack_materialize.add_argument("--max-started-trials", type=int)
+    pack_materialize.add_argument("--max-wall-seconds", type=int)
+    pack_materialize.add_argument("--max-total-tokens", type=int)
+    pack_materialize.add_argument("--max-orchestration-errors", type=int)
 
     preflight = subparsers.add_parser(
         "preflight",
@@ -331,6 +336,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Required acknowledgement before requeueing expired worker claims.",
     )
 
+    budget = subparsers.add_parser(
+        "budget",
+        help="Inspect durable experiment budget state.",
+    )
+    budget_subparsers = budget.add_subparsers(dest="budget_command", required=True)
+    budget_status = budget_subparsers.add_parser(
+        "status",
+        help="Show budget policy, reservations, and exhaustion state.",
+    )
+    budget_status.add_argument("experiment_id", type=int)
+
     results = subparsers.add_parser(
         "results",
         help="Export aggregate results for an existing experiment ID.",
@@ -428,7 +444,7 @@ def _experiment_report(
     summary = service.experiments.aggregate_experiment(experiment_id)
     latest_execution = summary.get("latest_execution") or {}
     return {
-        "report_schema_version": 6,
+        "report_schema_version": 8,
         "experiment": {
             "id": int(experiment.id),
             "name": experiment.name,
@@ -542,6 +558,13 @@ def _run_database_command(args: argparse.Namespace) -> int:
                 return 0
             raise ValueError(f"Unsupported worker command: {args.worker_command}")
 
+        if args.command == "budget":
+            budgets = ExperimentBudgetService(db)
+            if args.budget_command == "status":
+                _write_json(budgets.status(args.experiment_id))
+                return 0
+            raise ValueError(f"Unsupported budget command: {args.budget_command}")
+
         if args.command == "results":
             report = _experiment_report(service, args.experiment_id)
             _write_markdown(report, args.markdown)
@@ -552,7 +575,7 @@ def _run_database_command(args: argparse.Namespace) -> int:
             report = _experiment_report(service, args.experiment_id)
             summary = report["summary"]
             payload = {
-                "analysis_schema_version": summary.get("analysis_schema_version", 6),
+                "analysis_schema_version": summary.get("analysis_schema_version", 8),
                 "experiment": report["experiment"],
                 "ranking": summary.get("ranking"),
                 "pairwise_task_comparison": summary.get(
@@ -601,12 +624,23 @@ def _run_pack_command(args: argparse.Namespace) -> int:
 
     if args.pack_command == "materialize":
         agents = [parse_agent_spec(value) for value in args.agent]
+        budget = {
+            key: value
+            for key, value in {
+                "max_started_trials": args.max_started_trials,
+                "max_wall_seconds": args.max_wall_seconds,
+                "max_total_tokens": args.max_total_tokens,
+                "max_orchestration_errors": args.max_orchestration_errors,
+            }.items()
+            if value is not None
+        }
         result = materialize_pack(
             args.pack_id,
             args.output,
             agents=agents,
             repetitions=args.repetitions,
             max_workers=args.workers,
+            budget=budget or None,
         )
         loaded = load_suite_manifest(result["manifest_path"])
         result["manifest_sha256"] = loaded.sha256
