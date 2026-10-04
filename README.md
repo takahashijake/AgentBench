@@ -1,4 +1,4 @@
-# AgentBench V4
+# AgentBench V5
 
 **Extensible, reproducible evaluation infrastructure for coding agents.**
 
@@ -11,6 +11,27 @@ verified portable result bundle.
 V3 is primarily a **software-engineering release**. The goal is not to add more
 conditionals to a benchmark runner; it is to make AgentBench safe to extend.
 
+
+## V5 bounded local parallel execution
+
+V5 closes the execution-boundary gap that V4 intentionally left open.
+
+- **Independent worker sessions** — no SQLAlchemy `Session` object is shared
+  across worker threads.
+- **Atomic experiment + trial claims** — competing coordinators fail cleanly and
+  a planned cell can only be claimed once.
+- **Bounded local concurrency** — schema-5 suites lock `max_workers` from 1–32.
+- **Repository-safe scheduling** — different task repositories can overlap;
+  trials backed by one source repository serialize their Git lifecycle.
+- **Persisted execution attempts** — mode, worker count, status, timestamps, and
+  recovery metadata are retained and exported.
+- **Explicit crash recovery** — stale running claims require
+  `recover --confirm-inactive`; abandoned attempts become `interrupted`.
+- **Parallel stop-on-error semantics** — new work stops after the first
+  orchestration error, while already in-flight trials finish.
+
+Concurrency is now reproducible evidence: suite run/replay reads worker count from
+the manifest and lock instead of accepting an unrecorded override.
 
 ## V4 benchmark ecosystem
 
@@ -85,7 +106,8 @@ agentbench pack materialize core-v3 \
   --output ./benchmarks/core-v3 \
   --agent 'qwen=qwen -p "{prompt}"' \
   --agent 'codex=codex exec "{prompt}"' \
-  --repetitions 5
+  --repetitions 5 \
+  --workers 4
 ```
 
 The generated suite uses manifest schema 3 and records:

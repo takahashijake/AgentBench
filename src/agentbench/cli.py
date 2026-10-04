@@ -373,6 +373,7 @@ def _experiment_report(
 ) -> dict[str, Any]:
     experiment = service.experiments.get_experiment(experiment_id)
     summary = service.experiments.aggregate_experiment(experiment_id)
+    latest_execution = summary.get("latest_execution") or {}
     return {
         "report_schema_version": 5,
         "experiment": {
@@ -381,6 +382,8 @@ def _experiment_report(
             "status": experiment.status,
             "repetitions": experiment.repetitions,
             "stop_on_error": experiment.stop_on_error,
+            "max_workers": latest_execution.get("max_workers"),
+            "execution_mode": latest_execution.get("mode"),
             "planned_runs": experiment.planned_runs,
         },
         "summary": summary,

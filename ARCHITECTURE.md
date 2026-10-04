@@ -1,4 +1,4 @@
-# AgentBench V4 Architecture
+# AgentBench V5 Architecture
 
 AgentBench V4 is organized around two invariants:
 
@@ -358,12 +358,12 @@ This converts architectural intent into executable regression protection.
 
 ## 13. Schema evolution policy
 
-V4 distinguishes independent persisted/public formats:
+V5 distinguishes independent persisted/public formats:
 
-- suite manifest schema: **4**
-- analysis schema: **4**
-- suite report schema: **4**
-- suite lock schema: **3**
+- suite manifest schema: **5**
+- analysis schema: **5**
+- suite report schema: **5**
+- suite lock schema: **4**
 - result-bundle schema: **1**
 
 Schema versions change when compatibility expectations change; they are not tied
@@ -374,7 +374,7 @@ Writers emit the current schema.
 
 ## Integrity invariants
 
-V4 is incomplete if any of these regress:
+V5 is incomplete if any of these regress:
 
 1. source repositories remain unchanged by trials
 2. trial workspaces are isolated
@@ -431,3 +431,37 @@ priority than deepening the local evaluation product.
 A resource-incompatible cell becomes `skipped`; it is neither an agent failure nor an orchestration error. Analysis schema 4 therefore separates planned, eligible, skipped, benchmark, and orchestration-error counts.
 
 V4 deliberately does not wrap a single SQLAlchemy session in thread workers. Parallel/distributed scheduling requires an explicit persistence/session design rather than cosmetic concurrency.
+
+
+## V5 local execution engine
+
+**Paths:**
+
+- `src/agentbench/services/local_executor.py`
+- `src/agentbench/services/experiment.py`
+- `src/agentbench/models/database.py`
+
+V5 introduces bounded local parallel execution without violating SQLAlchemy's
+session ownership rules.
+
+The coordinator holds one session. Every worker constructs a fresh session from
+the same bound engine and a fresh `BenchmarkService`. Worker sessions are closed
+at the end of each cell.
+
+Execution uses two claim layers:
+
+1. an atomic experiment-status transition provides one active coordinator lease;
+2. an atomic `planned -> running` trial update provides exactly-one local claim
+   for each cell.
+
+`ExperimentExecution` is an additive persistence table, so existing databases
+gain execution history through `create_all` without altering the existing
+experiment/trial tables.
+
+Git worktree metadata is shared at the source-repository level. V5 therefore
+serializes the full trial lifecycle per source repository while still allowing
+different repositories to run concurrently. This is intentionally conservative.
+
+The scheduler is local and thread-backed; V5 does **not** claim multi-process or
+distributed-worker safety. A future distributed scheduler needs durable leases,
+heartbeats/expiry, and database semantics designed for cross-process ownership.

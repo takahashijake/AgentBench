@@ -251,6 +251,7 @@ class SuiteService:
                 "status": experiment.status,
                 "repetitions": experiment.repetitions,
                 "stop_on_error": experiment.stop_on_error,
+                "max_workers": loaded.manifest.experiment.max_workers,
                 "planned_runs": experiment.planned_runs,
             },
             "resources": {
