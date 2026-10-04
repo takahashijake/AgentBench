@@ -51,6 +51,7 @@ class BenchmarkPack:
     name: str
     description: str
     tasks: tuple[PackTaskSpec, ...]
+    compatibility_id: str | None = None
 
     def __post_init__(self) -> None:
         if not _RESOURCE_ID_RE.fullmatch(self.id):
@@ -59,11 +60,22 @@ class BenchmarkPack:
             raise ValueError(f"Pack {self.id!r} must have a version")
         if not self.name.strip():
             raise ValueError(f"Pack {self.id!r} must have a name")
+        if (
+            self.compatibility_id is not None
+            and not _RESOURCE_ID_RE.fullmatch(self.compatibility_id)
+        ):
+            raise ValueError(
+                f"Invalid benchmark compatibility ID: {self.compatibility_id!r}"
+            )
         if not self.tasks:
             raise ValueError(f"Pack {self.id!r} must contain at least one task")
         task_ids = [task.id for task in self.tasks]
         if len(task_ids) != len(set(task_ids)):
             raise ValueError(f"Pack {self.id!r} contains duplicate task IDs")
+
+    @property
+    def effective_compatibility_id(self) -> str:
+        return self.compatibility_id or self.id
 
 
 __all__ = ["BenchmarkPack", "PackTaskSpec"]
