@@ -98,7 +98,7 @@ class DistributedWorkerService:
         if experiment.status == "completed":
             return None
         if experiment.status == "running":
-            active_modes = {
+            active_modes: set[str] = {
                 str(mode)
                 for (mode,) in (
                     self.db.query(ExperimentExecution.mode)
@@ -280,14 +280,23 @@ class DistributedWorkerService:
         )
         if attempt is None or outcome.status == "lease_lost":
             return
-        attempt.status = outcome.status
-        attempt.completed_at = now
-        attempt.heartbeat_at = now
-        attempt.expires_at = now
         details = dict(attempt.details or {})
         details["benchmark_run_id"] = outcome.benchmark_run_id
         details["error"] = outcome.error
-        attempt.details = details
+        (
+            self.db.query(ExperimentWorkerAttempt)
+            .filter(ExperimentWorkerAttempt.id == claim.attempt_id)
+            .update(
+                {
+                    ExperimentWorkerAttempt.status: outcome.status,
+                    ExperimentWorkerAttempt.completed_at: now,
+                    ExperimentWorkerAttempt.heartbeat_at: now,
+                    ExperimentWorkerAttempt.expires_at: now,
+                    ExperimentWorkerAttempt.details: details,
+                },
+                synchronize_session=False,
+            )
+        )
 
         experiment = self.experiments.get_experiment(claim.experiment_id)
         active_or_planned = (
@@ -422,7 +431,7 @@ class DistributedWorkerService:
             .filter(
                 ExperimentWorkerAttempt.experiment_id == experiment_id,
                 ExperimentWorkerAttempt.status == "active",
-                ExperimentWorkerAttempt.expires_at <= threshold,
+                ExperimentWorkerAttempt.expires_at.op("<=")(threshold),
             )
             .order_by(ExperimentWorkerAttempt.id.asc())
             .all()
