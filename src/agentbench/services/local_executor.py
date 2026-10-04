@@ -155,12 +155,7 @@ class LocalParallelExperimentExecutor:
             details={"planned_for_attempt": len(work_items)},
         )
 
-        if experiment.started_at is None:
-            experiment.started_at = utc_now()
-        if experiment.status == "failed":
-            experiment.completed_at = None
-        experiment.status = "running"
-        self.coordinator.db.commit()
+        experiment = self.coordinator._claim_experiment_for_execution(experiment)
 
         next_index = 0
         stop_scheduling = False

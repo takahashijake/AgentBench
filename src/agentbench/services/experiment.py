@@ -346,6 +346,36 @@ class ExperimentService:
             error=trial.error,
         )
 
+    def _claim_experiment_for_execution(
+        self,
+        experiment: Experiment,
+    ) -> Experiment:
+        """Atomically acquire the single active coordinator lease."""
+
+        now = utc_now()
+        claimed = (
+            self.db.query(Experiment)
+            .filter(
+                Experiment.id == experiment.id,
+                Experiment.status != "running",
+            )
+            .update(
+                {
+                    Experiment.status: "running",
+                    Experiment.started_at: experiment.started_at or now,
+                    Experiment.completed_at: None,
+                },
+                synchronize_session=False,
+            )
+        )
+        self.db.commit()
+        if claimed != 1:
+            raise ExperimentBusyError(
+                f"Experiment {experiment.id} already has an active execution"
+            )
+        self.db.expire_all()
+        return self.get_experiment(int(experiment.id))
+
     def _start_execution_attempt(
         self,
         experiment_id: int,
@@ -408,8 +438,23 @@ class ExperimentService:
             )
         )
         if recovered:
+            now = utc_now()
             experiment.status = "pending"
             experiment.completed_at = None
+            running_attempts = (
+                self.db.query(ExperimentExecution)
+                .filter(
+                    ExperimentExecution.experiment_id == experiment.id,
+                    ExperimentExecution.status == "running",
+                )
+                .all()
+            )
+            for attempt in running_attempts:
+                attempt.status = "interrupted"
+                attempt.completed_at = now
+                details = dict(attempt.details or {})
+                details["recovered_running_trials"] = int(recovered)
+                attempt.details = details
         self.db.commit()
         self.db.refresh(experiment)
         return int(recovered)
@@ -470,12 +515,7 @@ class ExperimentService:
             max_workers=1,
         )
 
-        if experiment.started_at is None:
-            experiment.started_at = utc_now()
-        if experiment.status == "failed":
-            experiment.completed_at = None
-        experiment.status = "running"
-        self.db.commit()
+        experiment = self._claim_experiment_for_execution(experiment)
 
         stopped_early = False
         for trial_id in pending_ids:
