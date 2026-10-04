@@ -3,7 +3,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ...result_bundles import ResultBundleService
 from ...schemas import (
     ExperimentCreate,
     ExperimentDetail,
@@ -121,21 +120,3 @@ def get_experiment_results(experiment_id: int, db: Session = Depends(get_db)):
     except ExperimentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-
-@router.get("/api/experiments/{experiment_id}/bundle")
-def describe_experiment_bundle(
-    experiment_id: int,
-    db: Session = Depends(get_db),
-):
-    """Advertise the CLI export path without streaming arbitrary local artifacts."""
-    service = ExperimentService(db)
-    try:
-        experiment = service.get_experiment(experiment_id)
-    except ExperimentNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return {
-        "experiment_id": experiment.id,
-        "experiment_name": experiment.name,
-        "command": f"agentbench bundle export {experiment.id} -o experiment-{experiment.id}.zip",
-        "bundle_service": ResultBundleService.__name__,
-    }
