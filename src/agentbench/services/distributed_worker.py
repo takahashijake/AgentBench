@@ -117,9 +117,8 @@ class DistributedWorkerService:
                 )
                 .count()
             )
-            if (
-                active_modes - {"distributed_worker"}
-                or (not active_modes and active_worker_claims == 0)
+            if active_modes - {"distributed_worker"} or (
+                not active_modes and active_worker_claims == 0
             ):
                 raise ExperimentBusyError(
                     f"Experiment {experiment.id} is owned by a non-distributed "

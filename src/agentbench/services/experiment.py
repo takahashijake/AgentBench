@@ -318,6 +318,12 @@ class ExperimentService:
         )
         if trial is None:
             raise ValueError(f"Experiment trial not found: {trial_id}")
+        if ownership_check is not None and not ownership_check():
+            return TrialExecutionOutcome(
+                trial_id=int(trial.id),
+                status="lease_lost",
+                error="Durable worker lease is no longer active",
+            )
         if trial.status != "running":
             raise ExperimentBusyError(
                 f"Experiment trial {trial_id} must be running before execution; "
@@ -864,7 +870,6 @@ class ExperimentService:
                 for status in sorted({item.status for item in worker_rows})
             },
         }
-
 
         return {
             "analysis_schema_version": 6,

@@ -89,7 +89,9 @@ def test_independent_worker_sessions_claim_different_trials(tmp_path: Path):
         worker2 = DistributedWorkerService(db2)
 
         first = worker1.claim_next(experiment.id, owner_id="worker-a", lease_seconds=30)
-        second = worker2.claim_next(experiment.id, owner_id="worker-b", lease_seconds=30)
+        second = worker2.claim_next(
+            experiment.id, owner_id="worker-b", lease_seconds=30
+        )
 
         assert first is not None
         assert second is not None
