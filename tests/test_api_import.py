@@ -9,11 +9,7 @@ def test_api_import_and_mapper_configuration():
     assert app.title == "AgentBench Local"
     assert app.version == "3.0.0"
 
-    paths = {
-        route.path
-        for route in app.routes
-        if getattr(route, "path", None) is not None
-    }
+    paths = set(app.openapi()["paths"])
     assert "/" in paths
     assert "/dashboard" in paths
     assert "/docs" in paths
@@ -55,14 +51,4 @@ def test_application_factory_returns_independent_fastapi_instances():
     second = create_app()
 
     assert first is not second
-    first_paths = {
-        route.path
-        for route in first.routes
-        if getattr(route, "path", None) is not None
-    }
-    second_paths = {
-        route.path
-        for route in second.routes
-        if getattr(route, "path", None) is not None
-    }
-    assert first_paths == second_paths
+    assert set(first.openapi()["paths"]) == set(second.openapi()["paths"])
