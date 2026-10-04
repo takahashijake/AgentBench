@@ -148,6 +148,13 @@ class LocalParallelExperimentExecutor:
             for trial_id, task_id in pending
         ]
 
+        attempt = self.coordinator._start_execution_attempt(
+            experiment.id,
+            mode="local_parallel",
+            max_workers=max_workers,
+            details={"planned_for_attempt": len(work_items)},
+        )
+
         if experiment.started_at is None:
             experiment.started_at = utc_now()
         if experiment.status == "failed":
@@ -211,6 +218,14 @@ class LocalParallelExperimentExecutor:
 
         self.coordinator.db.commit()
         self.coordinator.db.refresh(experiment)
+        self.coordinator._finish_execution_attempt(
+            attempt.id,
+            status=str(experiment.status),
+            details={
+                "stop_scheduling_triggered": bool(stop_scheduling),
+                "remaining_planned_trials": int(remaining),
+            },
+        )
         return experiment
 
 

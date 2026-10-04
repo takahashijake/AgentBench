@@ -13,6 +13,7 @@ from ..models.database import (
     AgentConfig,
     BenchmarkTask,
     Experiment,
+    ExperimentExecution,
     ExperimentTrial,
 )
 from ..statistics import (
@@ -345,6 +346,47 @@ class ExperimentService:
             error=trial.error,
         )
 
+    def _start_execution_attempt(
+        self,
+        experiment_id: int,
+        *,
+        mode: str,
+        max_workers: int,
+        details: Mapping[str, Any] | None = None,
+    ) -> ExperimentExecution:
+        attempt = ExperimentExecution(
+            experiment_id=experiment_id,
+            mode=mode,
+            max_workers=max_workers,
+            status="running",
+            details=dict(details or {}),
+            started_at=utc_now(),
+        )
+        self.db.add(attempt)
+        self.db.commit()
+        self.db.refresh(attempt)
+        return attempt
+
+    def _finish_execution_attempt(
+        self,
+        attempt_id: int,
+        *,
+        status: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        attempt = (
+            self.db.query(ExperimentExecution)
+            .filter(ExperimentExecution.id == int(attempt_id))
+            .one()
+        )
+        attempt.status = status
+        if details:
+            merged = dict(attempt.details or {})
+            merged.update(details)
+            attempt.details = merged
+        attempt.completed_at = utc_now()
+        self.db.commit()
+
     def recover_running_trials(self, experiment_id: int) -> int:
         """Reset interrupted running claims to planned for an explicit resume."""
 
@@ -422,6 +464,12 @@ class ExperimentService:
             self.db.refresh(experiment)
             return experiment
 
+        attempt = self._start_execution_attempt(
+            experiment.id,
+            mode="sequential",
+            max_workers=1,
+        )
+
         if experiment.started_at is None:
             experiment.started_at = utc_now()
         if experiment.status == "failed":
@@ -457,6 +505,20 @@ class ExperimentService:
 
         self.db.commit()
         self.db.refresh(experiment)
+        self._finish_execution_attempt(
+            attempt.id,
+            status=str(experiment.status),
+            details={
+                "remaining_planned_trials": int(
+                    self.db.query(ExperimentTrial)
+                    .filter(
+                        ExperimentTrial.experiment_id == experiment.id,
+                        ExperimentTrial.status == "planned",
+                    )
+                    .count()
+                )
+            },
+        )
         return experiment
 
     def _finalize_status(self, experiment: Experiment) -> None:
@@ -638,8 +700,33 @@ class ExperimentService:
             for agent_id in experiment.agent_config_ids
         ]
 
+        execution_rows = (
+            self.db.query(ExperimentExecution)
+            .filter(ExperimentExecution.experiment_id == experiment.id)
+            .order_by(ExperimentExecution.id.asc())
+            .all()
+        )
+        execution_history = [
+            {
+                "id": int(item.id),
+                "mode": item.mode,
+                "max_workers": int(item.max_workers),
+                "status": item.status,
+                "started_at": (
+                    item.started_at.isoformat() if item.started_at is not None else None
+                ),
+                "completed_at": (
+                    item.completed_at.isoformat()
+                    if item.completed_at is not None
+                    else None
+                ),
+                "details": dict(item.details or {}),
+            }
+            for item in execution_rows
+        ]
+
         return {
-            "analysis_schema_version": 4,
+            "analysis_schema_version": 5,
             "experiment_id": experiment.id,
             "name": experiment.name,
             "status": experiment.status,
@@ -649,6 +736,8 @@ class ExperimentService:
             "by_task": by_task_rows,
             "by_cell": by_cell_rows,
             "ranking": build_agent_ranking(by_agent_rows),
+            "execution_history": execution_history,
+            "latest_execution": execution_history[-1] if execution_history else None,
             "pairwise_task_comparison": build_pairwise_task_comparison(
                 by_cell_rows,
                 [int(agent_id) for agent_id in experiment.agent_config_ids],

@@ -172,6 +172,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Repeated trials per task/agent cell (default: 5).",
     )
+    pack_materialize.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Locked local worker count for suite execution (1-32).",
+    )
 
     preflight = subparsers.add_parser(
         "preflight",
@@ -235,12 +241,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--write-lock",
         help="Optional path to persist the resolved lock used by this run.",
     )
-    run.add_argument(
-        "--workers",
-        type=int,
-        default=1,
-        help="Bounded local worker count for independent trial execution (1-32).",
-    )
     _add_report_outputs(run)
 
     replay = subparsers.add_parser(
@@ -252,12 +252,6 @@ def _build_parser() -> argparse.ArgumentParser:
     replay.add_argument(
         "--write-lock",
         help="Optional path to persist the newly verified current lock.",
-    )
-    replay.add_argument(
-        "--workers",
-        type=int,
-        default=1,
-        help="Bounded local worker count for independent trial execution (1-32).",
     )
     _add_report_outputs(replay)
 
@@ -364,10 +358,7 @@ def _run_suite(
     if args.write_lock:
         write_suite_lock(args.write_lock, current_lock)
 
-    imported, experiment, summary = service.execute_suite(
-        loaded,
-        max_workers=args.workers,
-    )
+    imported, experiment, summary = service.execute_suite(loaded)
     report = service.build_report(loaded, imported, experiment, summary)
     report["lock"] = current_lock
 
@@ -383,7 +374,7 @@ def _experiment_report(
     experiment = service.experiments.get_experiment(experiment_id)
     summary = service.experiments.aggregate_experiment(experiment_id)
     return {
-        "report_schema_version": 3,
+        "report_schema_version": 5,
         "experiment": {
             "id": int(experiment.id),
             "name": experiment.name,
@@ -457,7 +448,7 @@ def _run_database_command(args: argparse.Namespace) -> int:
             report = _experiment_report(service, args.experiment_id)
             summary = report["summary"]
             payload = {
-                "analysis_schema_version": summary.get("analysis_schema_version", 3),
+                "analysis_schema_version": summary.get("analysis_schema_version", 5),
                 "experiment": report["experiment"],
                 "ranking": summary.get("ranking"),
                 "pairwise_task_comparison": summary.get(
@@ -511,6 +502,7 @@ def _run_pack_command(args: argparse.Namespace) -> int:
             args.output,
             agents=agents,
             repetitions=args.repetitions,
+            max_workers=args.workers,
         )
         loaded = load_suite_manifest(result["manifest_path"])
         result["manifest_sha256"] = loaded.sha256
