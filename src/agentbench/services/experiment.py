@@ -492,7 +492,7 @@ class ExperimentService:
         ]
 
         return {
-            "analysis_schema_version": 2,
+            "analysis_schema_version": 3,
             "experiment_id": experiment.id,
             "name": experiment.name,
             "status": experiment.status,
