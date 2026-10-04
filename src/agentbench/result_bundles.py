@@ -74,6 +74,54 @@ def _zip_info(name: str) -> zipfile.ZipInfo:
     return info
 
 
+def _portable_results(run: Any) -> dict[str, Any]:
+    """Project run results onto portable semantics, excluding host-local paths."""
+
+    results = run.results if isinstance(run.results, dict) else {}
+    adapter = results.get("adapter_metadata")
+    portable_adapter: dict[str, Any] | None = None
+    if isinstance(adapter, dict):
+        portable_adapter = {
+            key: value
+            for key, value in adapter.items()
+            if key != "workspace_path"
+        }
+
+    stages: dict[str, Any] = {}
+    for name in ("setup", "test"):
+        stage = results.get(name)
+        if isinstance(stage, dict):
+            stages[name] = {
+                key: value
+                for key, value in stage.items()
+                if key not in {"stdout_path", "stderr_path", "cwd"}
+            }
+
+    cleanup = results.get("cleanup")
+    portable_cleanup = None
+    if isinstance(cleanup, dict):
+        portable_cleanup = {
+            key: value
+            for key, value in cleanup.items()
+            if "path" not in key.lower()
+        }
+
+    return {
+        "artifact_bundle_prefix": f"artifacts/run-{int(run.id)}/",
+        "adapter_metadata": portable_adapter,
+        "provenance": results.get("provenance"),
+        "base_commit": results.get("base_commit"),
+        "repository_head_at_start": results.get("repository_head_at_start"),
+        "final_commit": results.get("final_commit"),
+        "workspace_status": results.get("workspace_status"),
+        "workspace_diff_stats": results.get("workspace_diff_stats"),
+        "git_evidence": results.get("git_evidence"),
+        "stages": stages,
+        "cleanup": portable_cleanup,
+        "internal_error": results.get("internal_error"),
+    }
+
+
 def _run_payload(run: Any) -> dict[str, Any]:
     return {
         "id": int(run.id),
@@ -97,7 +145,7 @@ def _run_payload(run: Any) -> dict[str, Any]:
         "prompt_tokens": run.prompt_tokens,
         "completion_tokens": run.completion_tokens,
         "total_tokens": run.total_tokens,
-        "results": run.results,
+        "results": _portable_results(run),
     }
 
 
