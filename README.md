@@ -1,4 +1,4 @@
-# AgentBench V9
+# AgentBench V10
 
 **Extensible, reproducible evaluation infrastructure for coding agents.**
 
@@ -11,6 +11,49 @@ verified portable result bundle.
 V3 is primarily a **software-engineering release**. The goal is not to add more
 conditionals to a benchmark runner; it is to make AgentBench safe to extend.
 
+
+## V10 reproducible benchmark campaigns
+
+V10 promotes AgentBench from single-experiment evaluation to a reproducible
+evaluation program. A campaign is an ordered collection of already-locked suites.
+
+```yaml
+schema_version: 1
+id: portfolio-campaign
+name: Portfolio Campaign
+members:
+  - id: smoke
+    suite: benchmarks/smoke/suite.yaml
+    lock: benchmarks/smoke/suite.lock.json
+  - id: engineering
+    suite: benchmarks/engineering/suite.yaml
+    lock: benchmarks/engineering/suite.lock.json
+```
+
+Validate every member before benchmark state is mutated:
+
+```bash
+agentbench campaign validate campaign.yaml
+```
+
+Run the verified campaign and emit one cross-suite report:
+
+```bash
+agentbench campaign run campaign.yaml \
+  --output results/campaign.json \
+  --markdown results/campaign.md
+```
+
+Campaign state persists each member's suite/lock identity, experiment ID,
+terminal status, and canonical suite report. Cross-suite reliability is computed
+by summing canonical success and eligible-run counts, then applying Wilson
+intervals; percentages are never averaged.
+
+```bash
+agentbench campaign report <campaign-id> \
+  --output results/campaign.json \
+  --markdown results/campaign.md
+```
 
 ## V9 continuous-evaluation regression gates
 
@@ -492,6 +535,10 @@ agentbench publish verify <directory>
 
 agentbench regression compare <baseline.zip> <candidate.zip>
 agentbench regression gate <baseline.zip> <candidate.zip> [thresholds...]
+
+agentbench campaign validate <campaign.yaml>
+agentbench campaign run <campaign.yaml> [-o report.json] [--markdown report.md]
+agentbench campaign report <campaign-id> [-o report.json] [--markdown report.md]
 
 agentbench serve
 ```
