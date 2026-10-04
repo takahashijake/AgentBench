@@ -6,8 +6,18 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from agentbench.adapters import AdapterRegistry, AgentAdapter
-from agentbench.adapters.registry import create_default_adapter_registry
+from agentbench.adapters import (
+    AdapterCapabilities,
+    AdapterProfile,
+    AdapterRegistry,
+    AgentAdapter,
+    BuiltinAdapterProvider,
+)
+from agentbench.adapters.discovery import discover_adapter_providers
+from agentbench.adapters.registry import (
+    create_adapter_registry,
+    create_default_adapter_registry,
+)
 from agentbench.benchmark_packs import (
     BenchmarkPack,
     BuiltinPackProvider,
@@ -241,3 +251,100 @@ def test_service_injection_rejects_cross_session_dependencies(tmp_path: Path):
 
     with pytest.raises(ValueError, match="same database session"):
         ExperimentService(left, benchmark_service=foreign)
+
+
+
+class TinyAdapterProvider:
+    provider_id = "example.adapters"
+
+    def adapters(self):
+        return (
+            AdapterProfile(
+                id="fixture-native",
+                family="fixture",
+                description="test-only typed native adapter",
+                implementation="tests.FakeAdapter",
+                factory=lambda config: FakeAdapter(dict(config)),
+                capabilities=AdapterCapabilities(
+                    execution_protocol="fixture-json",
+                    native_protocol=True,
+                    structured_usage=True,
+                    cost_reporting=False,
+                    model_reporting=True,
+                ),
+            ),
+        )
+
+
+def test_adapter_provider_catalog_exposes_capabilities_without_claiming_fake_native_support():
+    registry = create_adapter_registry(discover_plugins=False)
+    rows = {row["id"]: row for row in registry.catalog()}
+
+    assert registry.provider_ids == ("agentbench.builtin",)
+    assert rows["codex"]["provider"] == "agentbench.builtin"
+    assert rows["codex"]["capabilities"]["native_protocol"] is False
+    assert rows["codex"]["capabilities"]["execution_protocol"] == "shell"
+    assert "shell-backed" in rows["codex"]["description"].lower()
+
+
+def test_external_adapter_provider_registration_and_runtime_metadata():
+    registry = AdapterRegistry()
+    registry.register_provider(BuiltinAdapterProvider())
+    registry.register_provider(TinyAdapterProvider())
+
+    resolved = registry.get("fixture-native")
+    adapter = registry.create(
+        {
+            "adapter": "fixture-native",
+            "name": "fixture",
+            "command_template": "fixture {prompt}",
+        }
+    )
+
+    assert resolved.provider_id == "example.adapters"
+    assert isinstance(adapter, FakeAdapter)
+    assert adapter.config["adapter_provider"] == "example.adapters"
+    assert adapter.config["adapter_capabilities"]["native_protocol"] is True
+
+
+def test_adapter_provider_collision_is_rejected():
+    registry = AdapterRegistry()
+    registry.register_provider(BuiltinAdapterProvider())
+
+    class CollidingProvider:
+        provider_id = "collision.adapters"
+
+        def adapters(self):
+            return (
+                AdapterProfile(
+                    id="codex",
+                    family="other",
+                    description="collision",
+                    implementation="collision.Adapter",
+                    factory=lambda config: FakeAdapter(dict(config)),
+                ),
+            )
+
+    with pytest.raises(ValueError, match="already registered"):
+        registry.register_provider(CollidingProvider())
+
+
+def test_optional_adapter_provider_discovery_is_failure_isolated(monkeypatch):
+    class BrokenEntryPoint:
+        name = "broken-adapter-provider"
+
+        def load(self):
+            raise RuntimeError("adapter plugin import exploded")
+
+    registry = AdapterRegistry()
+    registry.register_provider(BuiltinAdapterProvider())
+    monkeypatch.setattr(
+        "agentbench.adapters.discovery.metadata.entry_points",
+        lambda **kwargs: [BrokenEntryPoint()],
+    )
+
+    errors = discover_adapter_providers(registry)
+
+    assert len(errors) == 1
+    assert "adapter plugin import exploded" in errors[0]
+    assert registry.get("shell").provider_id == "agentbench.builtin"
