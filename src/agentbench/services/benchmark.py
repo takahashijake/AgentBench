@@ -10,7 +10,8 @@ from typing import Optional, Dict, Any, Tuple
 
 from sqlalchemy.orm import Session
 
-from ..adapters.base import AgentAdapter, ShellAgentAdapter
+from ..adapters.base import AgentAdapter
+from ..adapters.shell import ShellAgentAdapter
 from ..models.database import BenchmarkRun, BenchmarkTask, AgentConfig
 from ..utils.git import (
     get_git_commit,
@@ -393,5 +394,7 @@ class BenchmarkService:
             return run
 
         finally:
+            # Cleanup temp files from adapter
+            adapter.cleanup()
             # Cleanup worktree but keep logs in runs/ directory
             cleanup_git_worktree(worktree_path, repo_path)

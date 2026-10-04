@@ -175,18 +175,27 @@ def cleanup_git_worktree(worktree_path: Path, repo_path: Path) -> None:
     """
     if not worktree_path.exists():
         return
-        
+
     try:
-        # Remove the worktree using git worktree prune
+        # First remove the worktree using git worktree remove (proper removal)
         subprocess.run(
-            ["git", "worktree", "prune"],
+            ["git", "worktree", "remove", str(worktree_path)],
             cwd=repo_path,
             capture_output=True,
             check=True
         )
     except subprocess.CalledProcessError:
-        pass  # Git may not know about this worktree
-    
+        # If worktree remove fails, try prune as fallback
+        try:
+            subprocess.run(
+                ["git", "worktree", "prune"],
+                cwd=repo_path,
+                capture_output=True,
+                check=True
+            )
+        except subprocess.CalledProcessError:
+            pass  # Git may not know about this worktree
+
     # Remove the directory and all contents
     import shutil
     if worktree_path.exists():

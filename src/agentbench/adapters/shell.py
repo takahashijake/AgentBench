@@ -79,7 +79,7 @@ class ShellAgentAdapter(AgentAdapter):
             raise RuntimeError("No working directory specified and workspace_path not set")
 
         # Build the command by substituting the prompt
-        # Escape the prompt for shell usage
+        # First quote the prompt for shell safety, then substitute into template
         import shlex
         command = self.command_template.format(prompt=shlex.quote(prompt))
 
