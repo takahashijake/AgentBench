@@ -4,9 +4,15 @@ import json
 from pathlib import Path
 import subprocess
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 from agentbench.cli import main
 from agentbench.manifests import load_suite_manifest
+from agentbench.models.database import Base
 from agentbench.packs import list_packs, materialize_pack, parse_agent_spec
+from agentbench.provenance import build_suite_lock
+from agentbench.services.suite import SuiteService
 
 
 AGENT = {
@@ -131,3 +137,42 @@ def test_agent_spec_requires_prompt_placeholder():
         assert "{prompt}" in str(exc)
     else:
         raise AssertionError("missing prompt placeholder was accepted")
+
+
+
+def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
+    result = materialize_pack(
+        "smoke-v2",
+        tmp_path / "pack-metadata",
+        agents=[AGENT],
+        repetitions=2,
+    )
+    loaded = load_suite_manifest(result["manifest_path"])
+
+    lock = build_suite_lock(loaded)
+    assert lock["suite"]["schema_version"] == 2
+    assert lock["suite"]["benchmark_pack"]["id"] == "smoke-v2"
+    assert lock["suite"]["benchmark_pack"]["version"] == "2.0.0"
+    assert {task["category"] for task in lock["tasks"]} == {"bugfix", "feature"}
+    assert all(task["tags"] for task in lock["tasks"])
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(bind=engine)
+    db = sessionmaker(bind=engine)()
+    service = SuiteService(db, artifact_root=tmp_path / "artifacts")
+    imported = service.import_suite(loaded)
+    experiment = service.create_experiment(loaded, imported)
+    report = service.build_report(
+        loaded,
+        imported,
+        experiment,
+        {"analysis_schema_version": 2, "overall": {}},
+    )
+
+    assert report["report_schema_version"] == 2
+    assert report["suite"]["benchmark_pack"]["id"] == "smoke-v2"
+    assert report["suite"]["schema_version"] == 2
+    assert {task["category"] for task in report["resources"]["tasks"]} == {
+        "bugfix",
+        "feature",
+    }
