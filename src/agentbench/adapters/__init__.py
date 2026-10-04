@@ -21,6 +21,11 @@ from .registry import (
     executable_key,
 )
 from .shell import ShellAgentAdapter
+from .telemetry import (
+    StructuredJsonTelemetryParser,
+    TelemetryParser,
+    UsageTelemetry,
+)
 
 __all__ = [
     "ADAPTER_PROVIDER_ENTRYPOINT_GROUP",
@@ -37,6 +42,9 @@ __all__ = [
     "DuplicateAdapterError",
     "ResolvedAdapter",
     "ShellAgentAdapter",
+    "StructuredJsonTelemetryParser",
+    "TelemetryParser",
+    "UsageTelemetry",
     "create_adapter_registry",
     "create_default_adapter_registry",
     "discover_adapter_providers",
