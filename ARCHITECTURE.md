@@ -1,4 +1,4 @@
-# AgentBench V3 Architecture
+# AgentBench V4 Architecture
 
 AgentBench V3 is organized around two invariants:
 
@@ -419,3 +419,15 @@ directions include:
 
 Distributed workers, cloud control planes, and hosted SaaS are still lower
 priority than deepening the local evaluation product.
+
+## V4 resource-awareness boundary
+
+**Path:** `src/agentbench/resources.py`
+
+`TaskRequirements` is immutable benchmark metadata. Requirements flow provider → manifest → lock → experiment snapshot → pre-execution eligibility.
+
+`ExperimentService` owns eligibility because it owns matrix semantics. `BenchmarkService` still owns only a benchmark trial that is actually eligible to execute.
+
+A resource-incompatible cell becomes `skipped`; it is neither an agent failure nor an orchestration error. Analysis schema 4 therefore separates planned, eligible, skipped, benchmark, and orchestration-error counts.
+
+V4 deliberately does not wrap a single SQLAlchemy session in thread workers. Parallel/distributed scheduling requires an explicit persistence/session design rather than cosmetic concurrency.

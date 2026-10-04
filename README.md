@@ -1,4 +1,4 @@
-# AgentBench V3
+# AgentBench V4
 
 **Extensible, reproducible evaluation infrastructure for coding agents.**
 
@@ -11,7 +11,20 @@ verified portable result bundle.
 V3 is primarily a **software-engineering release**. The goal is not to add more
 conditionals to a benchmark runner; it is to make AgentBench safe to extend.
 
-## What changed in V3
+
+## V4 benchmark ecosystem
+
+V4 turns the V3 extension architecture into a larger benchmark ecosystem with explicit host-capability contracts.
+
+- `engineering-v4` expands the built-in engineering corpus from 8 to 12 tasks.
+- Tasks can declare minimum CPU, memory, platform, and executable requirements.
+- `agentbench pack preflight engineering-v4` reports compatibility before a run.
+- Resource-incompatible trials are recorded as `skipped`, not agent failures.
+- Manifest/report/analysis/lock schemas advance to 4/4/4/3 so requirements remain reproducible evidence.
+
+V4 intentionally keeps execution sequential. Resource eligibility is explicit; unsafe thread-level scheduling over one SQLAlchemy session is not introduced.
+
+## V3 foundation retained
 
 - **Benchmark-pack provider SPI** — corpus definitions are immutable domain data
   supplied through a registry. Built-ins are one provider, not a special case in
@@ -58,6 +71,7 @@ python -m pip install -e ".[dev]"
 agentbench --version
 agentbench doctor
 agentbench pack list
+agentbench pack preflight engineering-v4
 pytest
 ```
 
@@ -124,7 +138,8 @@ agentbench leaderboard 1 \
 |---|---:|---|
 | `smoke-v2` | 2 | fast pipeline / installation validation |
 | `core-v2` | 4 | stable V2 compatibility corpus |
-| `core-v3` | 8 | broader portfolio corpus with multi-file engineering tasks |
+| `core-v3` | 8 | V3 compatibility corpus with multi-file engineering tasks |
+| `engineering-v4` | 12 | V4 engineering corpus with host requirements and broader task semantics |
 
 `core-v3` contains:
 
@@ -383,7 +398,7 @@ sanitized diagnostics rather than credentials or private benchmark data.
 
 ## Project status
 
-**AgentBench V3 is the extensibility and software-engineering release.**
+**AgentBench V4 is the benchmark-ecosystem and resource-awareness release.**
 
 The core question it now answers is broader than V2:
 

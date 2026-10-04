@@ -5,14 +5,15 @@ AgentBench accepts YAML or JSON suite manifests.
 - **schema_version 1** — original custom suites
 - **schema_version 2** — V2 benchmark-pack metadata
 - **schema_version 3** — V3 provider identity for extensible corpora
+- **schema_version 4** — V4 declarative task host requirements
 
-All three remain readable in V3.
+All four remain readable in V4.
 
 ## Top level
 
 | Field | Required | Meaning |
 |---|---|---|
-| `schema_version` | yes | `1`, `2`, or `3` |
+| `schema_version` | yes | `1`, `2`, `3`, or `4` |
 | `id` | yes | stable suite identifier |
 | `name` | no | display name |
 | `description` | no | human description |
@@ -106,13 +107,13 @@ commands, task definitions, selections, or other semantic fields do.
 
 ## Suite locks
 
-V3 writers emit:
+V4 writers emit:
 
 ```json
-{"lock_schema_version": 2}
+{"lock_schema_version": 3}
 ```
 
-Lock schema 1 remains readable. This is important for diagnosing historical V2
+Lock schemas 1 and 2 remain readable. This is important for diagnosing historical V2
 locks: an old lock can be loaded even though replay verification may correctly
 report environment/version/configuration drift.
 
@@ -152,3 +153,20 @@ Locks deliberately do not capture:
 
 The contract records inputs useful for benchmark reproducibility without turning
 a lock file into a system dump.
+
+## V4 task requirements
+
+Schema 4 tasks may declare:
+
+```yaml
+requirements:
+  min_cpu_count: 2
+  min_memory_mb: 4096
+  supported_platforms: [linux, darwin]
+  required_commands: [python, git]
+```
+
+Requirements are normalized into the manifest identity, suite lock, experiment task snapshot, report, and portable result metadata.
+Before each trial, AgentBench evaluates the frozen requirements. An incompatible host produces a `skipped` trial before agent execution.
+
+Use `agentbench pack preflight <pack>` to inspect compatibility before materialization or a larger benchmark run.
