@@ -1,24 +1,40 @@
 # Suite manifest and lock reference
 
-## Suite manifest
+AgentBench accepts YAML or JSON suite manifests.
 
-AgentBench accepts YAML or JSON with `schema_version: 1`.
+- **schema_version 1** remains supported for V1 custom suites.
+- **schema_version 2** adds benchmark-corpus metadata used by V2 packs and reports.
 
-### Top level
+## Top level
 
 | Field | Required | Meaning |
 |---|---|---|
-| `schema_version` | yes | Currently `1` |
-| `id` | yes | Stable suite identifier |
-| `name` | no | Display name |
-| `description` | no | Human description |
-| `agents` | yes | One or more agent definitions |
-| `tasks` | yes | One or more benchmark tasks |
-| `experiment` | no | Matrix selection and policy |
+| `schema_version` | yes | `1` or `2` |
+| `id` | yes | stable suite identifier |
+| `name` | no | display name |
+| `description` | no | human description |
+| `benchmark_pack` | no | corpus ID/version provenance |
+| `agents` | yes | one or more agent definitions |
+| `tasks` | yes | one or more benchmark tasks |
+| `experiment` | no | matrix selection and execution policy |
 
 Resource IDs may contain letters, numbers, `.`, `_`, and `-`.
 
-### Agent
+## Benchmark pack metadata
+
+Schema V2 can identify the corpus that generated the suite:
+
+```yaml
+benchmark_pack:
+  id: core-v2
+  version: 2.0.0
+  description: Portable deterministic software-engineering tasks.
+```
+
+Pack metadata is included in canonical manifest hashing, reports, and
+reproducibility locks.
+
+## Agent
 
 ```yaml
 - id: qwen
@@ -27,10 +43,13 @@ Resource IDs may contain letters, numbers, `.`, `_`, and `-`.
   enabled: true
 ```
 
-`{prompt}` is replaced inside parsed argv tokens. The prompt is not interpolated
-through a shell.
+The shell adapter parses the command template with `shlex` and substitutes
+`{prompt}` inside argv tokens. The prompt itself is not shell-interpolated.
 
-### Task
+Built-in pack materialization requires `{prompt}` so generated suites cannot
+accidentally define an agent that never receives the task.
+
+## Task
 
 ```yaml
 - id: parser-fix
@@ -42,21 +61,27 @@ through a shell.
   test_command: pytest -q
   timeout: 600
   enabled: true
+  category: bugfix
+  difficulty: medium
+  tags: [python, parser, regression]
 ```
 
-`repository_path` is resolved relative to the manifest file.
+`repository_path` is resolved relative to the manifest.
+
+V2's `category`, `difficulty`, and `tags` fields are optional descriptive
+corpus metadata. They are included in the manifest identity and suite report.
 
 `setup_command` and `test_command` are trusted benchmark configuration and may
-use shell syntax. Agent invocation itself remains argv-based.
+use shell syntax. Agent invocation remains argv-based.
 
-### Experiment
+## Experiment
 
 ```yaml
 experiment:
   name: Qwen vs Codex
   tasks: [parser-fix]
   agents: [qwen, codex]
-  repetitions: 3
+  repetitions: 5
   stop_on_error: false
 ```
 
@@ -65,16 +90,27 @@ selected in manifest order.
 
 The experiment safety limit is 10,000 planned runs.
 
-## Lock format
+## Canonical manifest identity
 
-`agentbench lock` emits JSON with `lock_schema_version: 1`.
+After validation, AgentBench serializes the normalized Pydantic model with sorted
+JSON keys and hashes it with SHA-256.
 
-A lock contains:
+This means semantically equivalent YAML formatting does not define a different
+manifest merely because whitespace or key ordering changed.
 
-- suite ID + manifest SHA-256
-- resolved task commit(s)
+## Reproducibility lock
+
+`agentbench lock` emits a JSON lock envelope.
+
+The lock includes:
+
+- suite ID and schema version
+- benchmark-pack metadata when present
+- canonical manifest SHA-256
+- resolved task commits
 - task prompt SHA-256
 - setup/test commands and timeout
+- V2 task category/difficulty/tags
 - selected experiment matrix
 - agent command templates
 - executable identity/version/binary SHA-256
@@ -88,19 +124,18 @@ identity field itself.
 
 `agentbench verify` returns:
 
-- exit code `0` when the current resolution matches
+- exit code `0` when current resolution matches
 - exit code `3` when material drift is detected
 - exit code `2` for invalid input/runtime errors
 
 Drift output includes field paths plus expected/actual values.
 
-`agentbench replay` verifies first and refuses to execute if the lock does not
+`agentbench replay` verifies first and refuses execution when the lock does not
 match.
 
-## What the lock intentionally does not capture
+## Bounded provenance
 
-AgentBench avoids indiscriminate environment snapshots. The lock does **not**
-persist:
+The lock deliberately does not capture:
 
 - environment variables
 - API keys/tokens
@@ -108,5 +143,5 @@ persist:
 - full installed-package inventories
 - arbitrary machine identifiers
 
-The provenance contract is intentionally bounded to inputs that materially help
-explain benchmark reproducibility without collecting secrets.
+The provenance contract is bounded to information that materially helps explain
+benchmark reproducibility without collecting secrets.
