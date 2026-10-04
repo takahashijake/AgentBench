@@ -5,12 +5,12 @@ from __future__ import annotations
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from threading import Lock
-from typing import Any, cast
+from typing import Any
 
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import sessionmaker
 
-from ..models.database import ExperimentTrial
+from ..models.database import Experiment, ExperimentTrial
 from ..timeutils import utc_now
 from .benchmark import BenchmarkService
 from .experiment import ExperimentBusyError, ExperimentService, TrialExecutionOutcome
@@ -30,9 +30,7 @@ class LocalParallelExperimentExecutor:
         bind = coordinator.db.get_bind()
         if bind is None:
             raise ValueError("Parallel execution requires a bound database engine")
-        self.engine: Engine = (
-            bind.engine if isinstance(bind, Connection) else cast(Engine, bind)
-        )
+        self.engine: Engine = bind.engine if isinstance(bind, Connection) else bind
         if self.engine.dialect.name == "sqlite":
             database = self.engine.url.database
             if database in {None, "", ":memory:"}:
@@ -127,20 +125,20 @@ class LocalParallelExperimentExecutor:
                 f"Experiment {experiment.id} already has running trials"
             )
 
-        pending: list[tuple[int, int]] = [
-            (int(trial_id), int(task_id))
-            for trial_id, task_id in (
-                self.coordinator.db.query(
-                    ExperimentTrial.id,
-                    ExperimentTrial.task_id,
-                )
-                .filter(
-                    ExperimentTrial.experiment_id == experiment.id,
-                    ExperimentTrial.status == "planned",
-                )
-                .order_by(ExperimentTrial.ordinal.asc())
-                .all()
+        pending_rows: list[Any] = (
+            self.coordinator.db.query(
+                ExperimentTrial.id,
+                ExperimentTrial.task_id,
             )
+            .filter(
+                ExperimentTrial.experiment_id == experiment.id,
+                ExperimentTrial.status == "planned",
+            )
+            .order_by(ExperimentTrial.ordinal.asc())
+            .all()
+        )
+        pending: list[tuple[int, int]] = [
+            (int(row[0]), int(row[1])) for row in pending_rows
         ]
         if not pending:
             self.coordinator._finalize_status(experiment)
@@ -161,7 +159,7 @@ class LocalParallelExperimentExecutor:
 
         experiment = self.coordinator._claim_experiment_for_execution(experiment)
         attempt = self.coordinator._start_execution_attempt(
-            experiment.id,
+            int(experiment.id),
             mode="local_parallel",
             max_workers=max_workers,
             details={"planned_for_attempt": len(work_items)},
@@ -216,15 +214,26 @@ class LocalParallelExperimentExecutor:
             .count()
         )
         if stop_scheduling and remaining:
-            experiment.status = "failed"
-            experiment.completed_at = utc_now()
+            (
+                self.coordinator.db.query(Experiment)
+                .filter(Experiment.id == int(experiment.id))
+                .update(
+                    {
+                        Experiment.status: "failed",
+                        Experiment.completed_at: utc_now(),
+                    },
+                    synchronize_session=False,
+                )
+            )
+            self.coordinator.db.commit()
+            self.coordinator.db.expire_all()
+            experiment = self.coordinator.get_experiment(experiment_id)
         else:
             self.coordinator._finalize_status(experiment)
-
-        self.coordinator.db.commit()
-        self.coordinator.db.refresh(experiment)
+            self.coordinator.db.commit()
+            self.coordinator.db.refresh(experiment)
         self.coordinator._finish_execution_attempt(
-            attempt.id,
+            int(attempt.id),
             status=str(experiment.status),
             details={
                 "stop_scheduling_triggered": bool(stop_scheduling),
