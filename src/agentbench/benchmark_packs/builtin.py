@@ -337,6 +337,7 @@ CORE_V2 = BenchmarkPack(
         "bugfix, feature, regression, and refactor work."
     ),
     tasks=(_DURATION_TASK, _SLUG_TASK, _CACHE_TASK, _BATCH_TASK),
+    compatibility_id="agentbench-core",
 )
 
 SMOKE_V2 = BenchmarkPack(
@@ -345,6 +346,7 @@ SMOKE_V2 = BenchmarkPack(
     name="AgentBench Smoke V2",
     description="Fast two-task subset of the V2 core corpus.",
     tasks=(_DURATION_TASK, _SLUG_TASK),
+    compatibility_id="agentbench-smoke",
 )
 
 
@@ -720,6 +722,7 @@ CORE_V3 = BenchmarkPack(
         _PATH_SANDBOX_TASK,
         _EVENT_BUS_TASK,
     ),
+    compatibility_id="agentbench-core",
 )
 
 
