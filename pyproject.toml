@@ -9,7 +9,6 @@ description = "Extensible, reproducible evaluation platform for coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{name = "Jake Takahashi"}]
-license = {file = "LICENSE"}
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
