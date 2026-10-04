@@ -10,6 +10,7 @@ from ...schemas import (
     ExperimentResults,
 )
 from ...models import Experiment as ExperimentModel
+from ...services.distributed_worker import DistributedWorkerService
 from ...services.experiment import (
     ExperimentBusyError,
     ExperimentNotFoundError,
@@ -101,7 +102,7 @@ def get_experiment_leaderboard(
         experiment = service.get_experiment(experiment_id)
         summary = service.aggregate_experiment(experiment_id)
         return {
-            "analysis_schema_version": summary.get("analysis_schema_version", 5),
+            "analysis_schema_version": summary.get("analysis_schema_version", 6),
             "experiment_id": experiment.id,
             "experiment_name": experiment.name,
             "ranking": summary.get("ranking"),
@@ -128,3 +129,36 @@ def get_experiment_results(experiment_id: int, db: Session = Depends(get_db)):
         )
     except ExperimentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/api/experiments/{experiment_id}/workers")
+def get_worker_status(experiment_id: int, db: Session = Depends(get_db)):
+    try:
+        return DistributedWorkerService(db).status(experiment_id)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/api/experiments/{experiment_id}/workers/recover-expired")
+def recover_expired_workers(
+    experiment_id: int,
+    confirm_expired: bool = False,
+    grace_seconds: int = 0,
+    db: Session = Depends(get_db),
+):
+    if not confirm_expired:
+        raise HTTPException(
+            status_code=400,
+            detail="confirm_expired=true is required to requeue expired claims",
+        )
+    try:
+        return DistributedWorkerService(db).recover_expired(
+            experiment_id,
+            grace_seconds=grace_seconds,
+        )
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

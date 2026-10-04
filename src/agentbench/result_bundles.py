@@ -201,7 +201,7 @@ class ResultBundleService:
 
     def _report(self, experiment: Any, summary: dict[str, Any]) -> dict[str, Any]:
         return {
-            "report_schema_version": 5,
+            "report_schema_version": 6,
             "experiment": {
                 "id": int(experiment.id),
                 "name": experiment.name,
@@ -270,6 +270,24 @@ class ResultBundleService:
                     ),
                 }
                 for item in experiment.executions
+            ],
+            "worker_attempts": [
+                {
+                    "id": int(item.id),
+                    "trial_id": int(item.trial_id),
+                    "owner_id": item.owner_id,
+                    "status": item.status,
+                    "acquired_at": item.acquired_at.isoformat(),
+                    "heartbeat_at": item.heartbeat_at.isoformat(),
+                    "expires_at": item.expires_at.isoformat(),
+                    "completed_at": (
+                        item.completed_at.isoformat()
+                        if item.completed_at is not None
+                        else None
+                    ),
+                    "details": dict(item.details or {}),
+                }
+                for item in experiment.worker_attempts
             ],
             "trials": trials,
         }

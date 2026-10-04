@@ -61,3 +61,10 @@ def test_local_parallel_executor_owns_worker_sessions_not_global_scoped_session(
 
     assert not any(name.endswith("models.session") for name in imports)
     assert "sqlalchemy.orm" in imports
+
+
+def test_distributed_worker_uses_database_ownership_not_process_global_registry():
+    imports = imported_modules(SRC / "services" / "distributed_worker.py")
+
+    assert not any(name.endswith("models.session") for name in imports)
+    assert "sqlalchemy.orm" in imports

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 from sqlalchemy.orm import Session
 
@@ -15,6 +15,7 @@ from ..models.database import (
     Experiment,
     ExperimentExecution,
     ExperimentTrial,
+    ExperimentWorkerAttempt,
 )
 from ..statistics import (
     build_agent_ranking,
@@ -252,11 +253,7 @@ class ExperimentService:
         return experiment
 
     def execute_trial(self, trial_id: int) -> TrialExecutionOutcome:
-        """Atomically claim and execute one planned trial.
-
-        The status transition from planned -> running is conditional, so two
-        independent worker sessions cannot execute the same trial.
-        """
+        """Atomically claim and execute one planned trial."""
 
         started_at = utc_now()
         claimed = (
@@ -299,8 +296,49 @@ class ExperimentService:
                 ),
                 error=trial.error,
             )
+        return self.execute_claimed_trial(int(trial.id))
+
+    def execute_claimed_trial(
+        self,
+        trial_id: int,
+        *,
+        ownership_check: Callable[[], bool] | None = None,
+    ) -> TrialExecutionOutcome:
+        """Execute a trial that already has durable running ownership.
+
+        Distributed workers may provide a fencing callback. If ownership is lost
+        before terminal trial mutation, the stale worker's result is not attached
+        to the recovered trial.
+        """
+
+        trial = (
+            self.db.query(ExperimentTrial)
+            .filter(ExperimentTrial.id == int(trial_id))
+            .one_or_none()
+        )
+        if trial is None:
+            raise ValueError(f"Experiment trial not found: {trial_id}")
+        if ownership_check is not None and not ownership_check():
+            return TrialExecutionOutcome(
+                trial_id=int(trial.id),
+                status="lease_lost",
+                error="Durable worker lease is no longer active",
+            )
+        if trial.status != "running":
+            raise ExperimentBusyError(
+                f"Experiment trial {trial_id} must be running before execution; "
+                f"status={trial.status!r}"
+            )
 
         experiment = self.get_experiment(int(trial.experiment_id))
+        if ownership_check is not None and not ownership_check():
+            return TrialExecutionOutcome(
+                trial_id=int(trial.id),
+                status="lease_lost",
+                error="Durable worker lease is no longer active",
+            )
+
+        detached_run_id: int | None = None
         try:
             task_snapshots = self._snapshots_by_id(list(experiment.task_snapshots))
             requirements = TaskRequirements.from_mapping(
@@ -308,6 +346,13 @@ class ExperimentService:
             )
             eligibility = self.resource_inspector.evaluate(requirements)
             if not eligibility.eligible:
+                if ownership_check is not None and not ownership_check():
+                    self.db.rollback()
+                    return TrialExecutionOutcome(
+                        trial_id=int(trial.id),
+                        status="lease_lost",
+                        error="Durable worker lease was lost before skip finalization",
+                    )
                 trial.status = "skipped"
                 trial.error = "Resource requirements not satisfied: " + "; ".join(
                     eligibility.reasons
@@ -328,9 +373,29 @@ class ExperimentService:
                     task,
                     agent_config_id=trial.agent_config_id,
                 )
+                detached_run_id = int(run.id)
+                if ownership_check is not None and not ownership_check():
+                    self.db.rollback()
+                    return TrialExecutionOutcome(
+                        trial_id=int(trial.id),
+                        status="lease_lost",
+                        benchmark_run_id=detached_run_id,
+                        error=(
+                            "Durable worker lease was lost before benchmark "
+                            "finalization"
+                        ),
+                    )
                 trial.benchmark_run_id = run.id
                 trial.status = "completed"
         except Exception as exc:
+            if ownership_check is not None and not ownership_check():
+                self.db.rollback()
+                return TrialExecutionOutcome(
+                    trial_id=int(trial.id),
+                    status="lease_lost",
+                    benchmark_run_id=detached_run_id,
+                    error="Durable worker lease was lost during failed execution",
+                )
             trial.status = "error"
             trial.error = f"{type(exc).__name__}: {exc}"
         finally:
@@ -767,9 +832,47 @@ class ExperimentService:
             }
             for item in execution_rows
         ]
+        worker_rows = (
+            self.db.query(ExperimentWorkerAttempt)
+            .filter(ExperimentWorkerAttempt.experiment_id == experiment.id)
+            .order_by(ExperimentWorkerAttempt.id.asc())
+            .all()
+        )
+        worker_attempts = [
+            {
+                "id": int(item.id),
+                "trial_id": int(item.trial_id),
+                "owner_id": item.owner_id,
+                "status": item.status,
+                "acquired_at": item.acquired_at.isoformat(),
+                "heartbeat_at": item.heartbeat_at.isoformat(),
+                "expires_at": item.expires_at.isoformat(),
+                "completed_at": (
+                    item.completed_at.isoformat()
+                    if item.completed_at is not None
+                    else None
+                ),
+                "details": dict(item.details or {}),
+            }
+            for item in worker_rows
+        ]
+        now = utc_now()
+        worker_summary = {
+            "attempt_count": len(worker_attempts),
+            "active_count": sum(item.status == "active" for item in worker_rows),
+            "expired_active_count": sum(
+                item.status == "active" and item.expires_at <= now
+                for item in worker_rows
+            ),
+            "owners": sorted({item.owner_id for item in worker_rows}),
+            "status_counts": {
+                status: sum(item.status == status for item in worker_rows)
+                for status in sorted({item.status for item in worker_rows})
+            },
+        }
 
         return {
-            "analysis_schema_version": 5,
+            "analysis_schema_version": 6,
             "experiment_id": experiment.id,
             "name": experiment.name,
             "status": experiment.status,
@@ -781,6 +884,8 @@ class ExperimentService:
             "ranking": build_agent_ranking(by_agent_rows),
             "execution_history": execution_history,
             "latest_execution": execution_history[-1] if execution_history else None,
+            "worker_attempts": worker_attempts,
+            "worker_summary": worker_summary,
             "pairwise_task_comparison": build_pairwise_task_comparison(
                 by_cell_rows,
                 [int(agent_id) for agent_id in experiment.agent_config_ids],

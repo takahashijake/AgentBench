@@ -2,11 +2,11 @@
 
 AgentBench versions persisted/public formats independently.
 
-Current V5 writers use:
+Current V6 writers use:
 
 - suite manifest schema: **5**
-- analysis schema: **5**
-- suite report schema: **5**
+- analysis schema: **6**
+- suite report schema: **6**
 - suite-lock schema: **4**
 - result-bundle schema: **1**
 
@@ -42,3 +42,25 @@ agent-success denominators.
 Portable result bundles remain content-addressed and verify declared paths, sizes,
 SHA-256 digests, duplicate names, traversal attempts, undeclared payloads, and
 archive size bounds before extraction.
+
+
+## V6 worker evidence
+
+Analysis schema 6 adds `worker_attempts` and `worker_summary`.
+
+Portable worker-attempt fields include trial ID, owner ID, status, acquisition,
+heartbeat, expiry, completion timestamps, and bounded details. The opaque lease
+token is intentionally excluded from reports and result bundles.
+
+Worker-attempt statuses may include:
+
+- `active`
+- `completed`
+- `error`
+- `skipped`
+- `expired`
+- `orphaned`
+
+A stale worker may internally observe `lease_lost`; canonical attempt history
+continues to reflect the recovered/expired ownership record rather than allowing
+the stale process to overwrite it.

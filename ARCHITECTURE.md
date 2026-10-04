@@ -1,4 +1,4 @@
-# AgentBench V5 Architecture
+# AgentBench V6 Architecture
 
 AgentBench V4 is organized around two invariants:
 
@@ -465,3 +465,50 @@ different repositories to run concurrently. This is intentionally conservative.
 The scheduler is local and thread-backed; V5 does **not** claim multi-process or
 distributed-worker safety. A future distributed scheduler needs durable leases,
 heartbeats/expiry, and database semantics designed for cross-process ownership.
+
+
+## V6 durable worker protocol
+
+**Paths:**
+
+- `src/agentbench/services/distributed_worker.py`
+- `src/agentbench/models/database.py`
+- `src/agentbench/services/experiment.py`
+
+V6 adds `ExperimentWorkerAttempt` as an additive persistence table. A worker
+claim is represented by:
+
+```text
+experiment + trial
+        │
+        ▼
+atomic planned → running transition
+        │
+        ▼
+worker attempt(owner, token, heartbeat, expiry)
+        │
+        ├── heartbeat extends expiry
+        │
+        └── ownership check fences terminal trial mutation
+```
+
+Claims use the existing conditional trial-state transition as the database
+serialization point. Separate processes therefore compete through persisted
+state rather than a process-global lock.
+
+Lease expiry does **not** automatically requeue a trial. Automatic expiry would
+allow a temporarily disconnected but still-running worker to race a replacement.
+An operator must explicitly recover expired claims. Recovery changes the old
+attempt to `expired` and returns the trial to `planned`.
+
+Completion is fenced by the original owner/token. If that attempt is no longer
+active, the old worker returns `lease_lost` and does not attach its result to
+the recovered trial. A benchmark run already committed by the execution layer
+may remain as detached diagnostic evidence; it is not counted as that trial's
+canonical run.
+
+This is intentionally an at-least-once **execution** model with fenced canonical
+trial state, not a claim of exactly-once external side effects.
+
+V5 local coordinators and V6 distributed workers are mutually exclusive on one
+experiment. Multiple V6 workers may cooperate concurrently.

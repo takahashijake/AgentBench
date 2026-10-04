@@ -104,7 +104,7 @@ raise SystemExit(0 if len(list(root.glob("*.start"))) >= 2 else 9)
     assert summary["overall"]["benchmark_runs"] == 2
     assert summary["overall"]["successful_runs"] == 2
     assert summary["overall"]["orchestration_errors"] == 0
-    assert summary["analysis_schema_version"] == 5
+    assert summary["analysis_schema_version"] == 6
     assert summary["latest_execution"]["mode"] == "local_parallel"
     assert summary["latest_execution"]["max_workers"] == 2
     assert summary["latest_execution"]["status"] == "completed"

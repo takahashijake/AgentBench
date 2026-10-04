@@ -62,3 +62,27 @@ agentbench serve
 
 Readiness mismatch uses exit code `3`; invalid input/runtime errors use exit
 code `2`.
+
+
+## Durable cross-process workers
+
+```text
+agentbench worker run <experiment-id> [--owner <id>] [--lease-seconds 60] [--max-trials N]
+agentbench worker status <experiment-id>
+agentbench worker recover-expired <experiment-id> --confirm-expired [--grace-seconds N]
+```
+
+`worker run` claims planned cells one at a time through durable database state.
+Each worker invocation records a `distributed_worker` execution attempt. The
+default owner is generated from the hostname plus a random suffix; production
+automation should normally provide an explicit stable worker identity.
+
+Lease duration is bounded to 10–3600 seconds. A heartbeat thread renews an active
+claim approximately every third of the lease interval.
+
+`worker recover-expired` is intentionally gated by `--confirm-expired`.
+Expiry alone does not prove the old worker process stopped. Recovery requeues only
+claims whose persisted expiry is older than the optional grace period.
+
+Use `worker status` before recovery to inspect owners, expiry times, and claim
+state. Lease tokens are internal fencing credentials and are never printed.

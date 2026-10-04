@@ -1,4 +1,4 @@
-# AgentBench V5
+# AgentBench V6
 
 **Extensible, reproducible evaluation infrastructure for coding agents.**
 
@@ -11,6 +11,47 @@ verified portable result bundle.
 V3 is primarily a **software-engineering release**. The goal is not to add more
 conditionals to a benchmark runner; it is to make AgentBench safe to extend.
 
+
+## V6 durable cross-process workers
+
+V6 extends V5's safe local thread pool into a durable worker protocol that can be
+used by separate AgentBench processes sharing one database.
+
+- **Durable claims** — every claimed trial records owner ID, opaque lease token,
+  acquisition time, heartbeat, expiry, status, and bounded metadata.
+- **Heartbeats** — long-running trials periodically extend their database lease.
+- **Fenced completion** — if an operator expires/requeues a claim, the stale
+  worker cannot attach a terminal result to the recovered trial.
+- **Explicit recovery** — expired claims are never silently recycled while an
+  original process might still be alive.
+- **Cooperative workers** — multiple `agentbench worker run` processes can
+  consume independent planned cells from one experiment.
+- **Mixed-mode exclusion** — durable workers cannot steal cells from an active
+  V5 sequential/local-parallel coordinator.
+- **Portable worker evidence** — analysis and result bundles retain owner/status/
+  timing history but never expose lease tokens.
+
+Example:
+
+```bash
+# Process / machine A
+agentbench worker run 42 --owner worker-a --lease-seconds 60
+
+# Process / machine B, using the same database and shared task/artifact paths
+agentbench worker run 42 --owner worker-b --lease-seconds 60
+
+agentbench worker status 42
+```
+
+Recovery is deliberately explicit:
+
+```bash
+agentbench worker recover-expired 42 --grace-seconds 30 --confirm-expired
+```
+
+V6 guarantees fenced AgentBench trial finalization after recovery. It does not
+claim exactly-once behavior for arbitrary external side effects performed by a
+coding-agent subprocess.
 
 ## V5 bounded local parallel execution
 
