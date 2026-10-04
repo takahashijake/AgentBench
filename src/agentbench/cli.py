@@ -22,6 +22,13 @@ from .provenance import (
     write_suite_lock,
 )
 from .reporting import render_leaderboard_markdown, render_markdown_report
+from .result_bundles import (
+    BundleValidationError,
+    ResultBundleService,
+    extract_result_bundle,
+    inspect_result_bundle,
+    verify_result_bundle,
+)
 from .services.experiment import ExperimentBusyError, ExperimentNotFoundError
 from .services.suite import SuiteService
 
@@ -237,6 +244,38 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     leaderboard.add_argument("experiment_id", type=int)
     _add_report_outputs(leaderboard)
+
+    bundle = subparsers.add_parser(
+        "bundle",
+        help="Export, verify, inspect, or safely extract portable result bundles.",
+    )
+    bundle_subparsers = bundle.add_subparsers(dest="bundle_command", required=True)
+
+    bundle_export = bundle_subparsers.add_parser(
+        "export",
+        help="Export one persisted experiment and its immutable artifacts.",
+    )
+    bundle_export.add_argument("experiment_id", type=int)
+    bundle_export.add_argument("--output", "-o", required=True)
+
+    bundle_verify = bundle_subparsers.add_parser(
+        "verify",
+        help="Verify bundle identity and every declared payload digest.",
+    )
+    bundle_verify.add_argument("bundle")
+
+    bundle_inspect = bundle_subparsers.add_parser(
+        "inspect",
+        help="Verify a bundle and print its portable manifest/report.",
+    )
+    bundle_inspect.add_argument("bundle")
+
+    bundle_extract = bundle_subparsers.add_parser(
+        "extract",
+        help="Verify then safely extract a bundle into an empty directory.",
+    )
+    bundle_extract.add_argument("bundle")
+    bundle_extract.add_argument("--output", "-o", required=True)
     return parser
 
 
@@ -288,7 +327,7 @@ def _experiment_report(
     experiment = service.experiments.get_experiment(experiment_id)
     summary = service.experiments.aggregate_experiment(experiment_id)
     return {
-        "report_schema_version": 2,
+        "report_schema_version": 3,
         "experiment": {
             "id": int(experiment.id),
             "name": experiment.name,
@@ -326,7 +365,7 @@ def _run_database_command(args: argparse.Namespace) -> int:
             report = _experiment_report(service, args.experiment_id)
             summary = report["summary"]
             payload = {
-                "analysis_schema_version": summary.get("analysis_schema_version", 2),
+                "analysis_schema_version": summary.get("analysis_schema_version", 3),
                 "experiment": report["experiment"],
                 "ranking": summary.get("ranking"),
                 "pairwise_task_comparison": summary.get(
@@ -342,6 +381,14 @@ def _run_database_command(args: argparse.Namespace) -> int:
                 args.markdown,
             )
             _write_json(payload, args.output)
+            return 0
+
+        if args.command == "bundle" and args.bundle_command == "export":
+            payload = ResultBundleService(db).export(
+                args.experiment_id,
+                args.output,
+            )
+            _write_json(payload)
             return 0
 
         raise ValueError(f"Unsupported database command: {args.command}")
@@ -431,6 +478,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _write_json(response)
             return 0 if verification["valid"] else 3
 
+        if args.command == "bundle":
+            if args.bundle_command == "verify":
+                verified = verify_result_bundle(args.bundle)
+                _write_json(
+                    {
+                        "valid": True,
+                        "path": str(verified.path),
+                        "identity_sha256": verified.identity_sha256,
+                        "experiment": verified.manifest.get("experiment"),
+                        "file_count": len(verified.manifest.get("files", [])),
+                    }
+                )
+                return 0
+            if args.bundle_command == "inspect":
+                _write_json(inspect_result_bundle(args.bundle))
+                return 0
+            if args.bundle_command == "extract":
+                _write_json(extract_result_bundle(args.bundle, args.output))
+                return 0
+
         return _run_database_command(args)
     except (
         OSError,
@@ -438,6 +505,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ValidationError,
         ExperimentBusyError,
         ExperimentNotFoundError,
+        BundleValidationError,
     ) as exc:
         print(
             json.dumps(
