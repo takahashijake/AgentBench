@@ -18,8 +18,7 @@ AdapterFactory = Callable[[dict[str, Any]], AgentAdapter]
 class AgentAdapterFactory(Protocol):
     """Minimal factory contract consumed by BenchmarkService."""
 
-    def create(self, config: Mapping[str, Any]) -> AgentAdapter:
-        ...
+    def create(self, config: Mapping[str, Any]) -> AgentAdapter: ...
 
 
 def executable_key(command_template: str) -> str:

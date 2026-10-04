@@ -148,8 +148,14 @@ def test_suite_planning_preserves_manifest_selection_order(tmp_path: Path):
     repo = tmp_path / "target"
     base_commit = init_git_repo(repo)
     agents = [
-        {"id": "agent-a", "command_template": shlex.join([sys.executable, "-c", "pass"])},
-        {"id": "agent-b", "command_template": shlex.join([sys.executable, "-c", "pass"])},
+        {
+            "id": "agent-a",
+            "command_template": shlex.join([sys.executable, "-c", "pass"]),
+        },
+        {
+            "id": "agent-b",
+            "command_template": shlex.join([sys.executable, "-c", "pass"]),
+        },
     ]
     tasks = [
         {
@@ -204,8 +210,7 @@ def test_suite_planning_preserves_manifest_selection_order(tmp_path: Path):
         .all()
     )
     assert [
-        (trial.task_id, trial.agent_config_id, trial.repetition)
-        for trial in trials[:4]
+        (trial.task_id, trial.agent_config_id, trial.repetition) for trial in trials[:4]
     ] == [
         (imported.task_ids["task-b"], imported.agent_config_ids["agent-b"], 1),
         (imported.task_ids["task-b"], imported.agent_config_ids["agent-b"], 2),

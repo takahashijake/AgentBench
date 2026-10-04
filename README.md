@@ -338,25 +338,48 @@ boundaries are executable constraints, not just documentation.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Quality assurance
+## Development and quality assurance
 
-CI runs on Python 3.11 and 3.13 and exercises:
+Install the development toolchain and run the repository-wide local gate:
 
-- package installation
+```bash
+python -m pip install -e ".[dev]"
+make qa
+```
+
+Individual targets include `make lint`, `make format-check`, `make typecheck`,
+`make test`, `make docs`, `make build`, and `make smoke`. Docker users can
+also run `make docker-smoke`.
+
+CI runs a dedicated quality job plus integration jobs on Python 3.11 and 3.13.
+It verifies:
+
+- the installed dependency graph
 - source/test compilation
-- installed 3.0.0 CLI
-- built-in/provider registry discovery
-- `core-v3` metadata
-- deterministic pack materialization
-- schema-3 validation
-- suite-lock creation and verification
+- Ruff lint and formatting
+- type checking of stable domain/extension contracts
+- the complete pytest suite with a coverage floor
+- strict documentation builds
+- wheel and source-distribution builds plus Twine validation
+- installed CLI and deterministic pack/lock smoke workflows
 - application-factory construction
-- end-to-end benchmark execution
 - provider and adapter injection
-- pairwise statistics
-- deterministic/tamper-resistant result bundles
+- pairwise statistics and result-bundle integrity
 - architecture dependency tests
-- the complete pytest suite
+- Docker image build and container CLI smoke behavior
+
+Tag builds create validated release-candidate artifacts but do not publish them
+automatically.
+
+## Documentation and contribution
+
+The MkDocs tree under `docs/` covers installation, quickstart, configuration,
+execution semantics, result interpretation, schemas, extensions, testing, and
+release procedure. A practical wiki-ready navigation layer is under `wiki/`.
+
+Contributors should start with `CONTRIBUTING.md`; security reporting guidance is
+in `SECURITY.md`. The issue and pull-request templates ask for reproducible,
+sanitized diagnostics rather than credentials or private benchmark data.
 
 ## Project status
 

@@ -114,19 +114,22 @@ def test_pack_cli_lists_and_materializes(tmp_path: Path, capsys):
     assert any(pack["id"] == "core-v2" for pack in listed["packs"])
 
     output = tmp_path / "generated"
-    assert main(
-        [
-            "pack",
-            "materialize",
-            "smoke-v2",
-            "--output",
-            str(output),
-            "--agent",
-            'fixture=python -c "print(1)" {prompt}',
-            "--repetitions",
-            "2",
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "pack",
+                "materialize",
+                "smoke-v2",
+                "--output",
+                str(output),
+                "--agent",
+                'fixture=python -c "print(1)" {prompt}',
+                "--repetitions",
+                "2",
+            ]
+        )
+        == 0
+    )
     generated = json.loads(capsys.readouterr().out)
     assert generated["schema_version"] == 3
     assert generated["planned_runs"] == 4
@@ -143,7 +146,6 @@ def test_agent_spec_requires_prompt_placeholder():
         assert "{prompt}" in str(exc)
     else:
         raise AssertionError("missing prompt placeholder was accepted")
-
 
 
 def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
@@ -183,7 +185,6 @@ def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
         "bugfix",
         "feature",
     }
-
 
 
 def test_smoke_pack_executes_end_to_end_through_canonical_services(tmp_path: Path):

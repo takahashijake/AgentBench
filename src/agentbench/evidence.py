@@ -10,7 +10,9 @@ from typing import Any
 from .artifacts import RunArtifactStore
 
 
-def _git(path: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _git(
+    path: Path, *args: str, check: bool = True
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", *args],
         cwd=path,
@@ -73,7 +75,9 @@ def collect_diff_stats(path: Path, base_commit: str) -> dict[str, int | str]:
             except OSError:
                 pass
 
-    diffstat = _git(path, "diff", "--stat", base_commit, "--", check=True).stdout.strip()
+    diffstat = _git(
+        path, "diff", "--stat", base_commit, "--", check=True
+    ).stdout.strip()
     return {
         "files_changed": tracked_files + len(untracked),
         "insertions": insertions,
@@ -118,7 +122,9 @@ def capture_git_evidence(
                 entry.update({"type": "symlink", "target": str(source.readlink())})
             elif source.is_file():
                 data = source.read_bytes()
-                artifact_store.write_bytes(Path("git") / "untracked" / Path(*parts), data)
+                artifact_store.write_bytes(
+                    Path("git") / "untracked" / Path(*parts), data
+                )
                 entry.update(
                     {
                         "type": "file",

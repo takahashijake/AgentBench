@@ -31,7 +31,9 @@ def worktree_count(repo: Path) -> int:
     return sum(1 for line in result.stdout.splitlines() if line.startswith("worktree "))
 
 
-def test_full_benchmark_isolated_preserves_agent_file_and_cleans_worktree(tmp_path: Path):
+def test_full_benchmark_isolated_preserves_agent_file_and_cleans_worktree(
+    tmp_path: Path,
+):
     repo = tmp_path / "target"
     base_commit = init_git_repo(repo)
     db = make_session()
@@ -209,14 +211,10 @@ def test_structured_agent_usage_is_persisted_on_run(tmp_path: Path):
     base_commit = init_git_repo(repo)
     db = make_session()
 
-    usage_line = (
-        '{"usage":{"input_tokens":42,"output_tokens":17,"total_tokens":59}}'
-    )
+    usage_line = '{"usage":{"input_tokens":42,"output_tokens":17,"total_tokens":59}}'
     agent = AgentConfig(
         name="usage-agent",
-        command_template=shlex.join(
-            [sys.executable, "-c", f"print({usage_line!r})"]
-        ),
+        command_template=shlex.join([sys.executable, "-c", f"print({usage_line!r})"]),
     )
     db.add(agent)
     db.commit()

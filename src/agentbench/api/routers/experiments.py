@@ -119,4 +119,3 @@ def get_experiment_results(experiment_id: int, db: Session = Depends(get_db)):
         )
     except ExperimentNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-

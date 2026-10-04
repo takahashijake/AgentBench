@@ -3,9 +3,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+build/
+dist/
+site/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -15,10 +19,12 @@ htmlcov/
 .venv/
 venv/
 
-# AgentBench local state
+# AgentBench generated/local state
 agentbench.db
 .agentbench/
 runs/
+results/
+benchmarks/
 
 # Editor / OS
 .vscode/

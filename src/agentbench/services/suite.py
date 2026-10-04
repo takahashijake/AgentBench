@@ -104,9 +104,7 @@ class SuiteService:
         )
         stable_name = self.stable_resource_name(loaded.manifest.id, definition.id)
         matches = (
-            self.db.query(BenchmarkTask)
-            .filter(BenchmarkTask.name == stable_name)
-            .all()
+            self.db.query(BenchmarkTask).filter(BenchmarkTask.name == stable_name).all()
         )
         if len(matches) > 1:
             raise ValueError(
@@ -162,8 +160,7 @@ class SuiteService:
             for resource_id in loaded.manifest.selected_agent_ids()
         ]
         selected_task_ids = [
-            task_ids[resource_id]
-            for resource_id in loaded.manifest.selected_task_ids()
+            task_ids[resource_id] for resource_id in loaded.manifest.selected_task_ids()
         ]
         return SuiteImportResult(
             suite_id=loaded.manifest.id,
@@ -183,11 +180,7 @@ class SuiteService:
 
         bindings = imported or self.import_suite(loaded)
         definition = loaded.manifest.experiment
-        experiment_name = (
-            definition.name
-            or loaded.manifest.name
-            or loaded.manifest.id
-        )
+        experiment_name = definition.name or loaded.manifest.name or loaded.manifest.id
         experiment_description = (
             definition.description
             if definition.description is not None

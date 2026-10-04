@@ -155,7 +155,9 @@ class ExperimentTrial(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
-    experiment_id = Column(Integer, ForeignKey("experiments.id"), nullable=False, index=True)
+    experiment_id = Column(
+        Integer, ForeignKey("experiments.id"), nullable=False, index=True
+    )
     task_id = Column(Integer, ForeignKey("benchmark_tasks.id"), nullable=False)
     agent_config_id = Column(Integer, ForeignKey("agent_configs.id"), nullable=False)
     repetition = Column(Integer, nullable=False)

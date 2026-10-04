@@ -32,7 +32,6 @@ from ..utils.git import (
     create_git_worktree,
     get_git_commit,
     get_git_diff_stats,
-    get_git_status,
     is_git_repository,
 )
 
@@ -90,7 +89,9 @@ class BenchmarkService:
         )
         return default_config.id if default_config is not None else None
 
-    def create_agent_adapter(self, agent_config_id: Optional[int] = None) -> AgentAdapter:
+    def create_agent_adapter(
+        self, agent_config_id: Optional[int] = None
+    ) -> AgentAdapter:
         resolved_id = self._resolve_agent_config_id(agent_config_id)
         if resolved_id is None:
             config = {
@@ -100,9 +101,7 @@ class BenchmarkService:
             }
         else:
             agent_config = (
-                self.db.query(AgentConfig)
-                .filter(AgentConfig.id == resolved_id)
-                .one()
+                self.db.query(AgentConfig).filter(AgentConfig.id == resolved_id).one()
             )
             config = {
                 "name": agent_config.name,
@@ -175,9 +174,8 @@ class BenchmarkService:
         total = int(ran_matches[-1])
         failures = re.findall(r"failures=(\d+)", output)
         errors = re.findall(r"errors=(\d+)", output)
-        failed = (
-            (int(failures[-1]) if failures else 0)
-            + (int(errors[-1]) if errors else 0)
+        failed = (int(failures[-1]) if failures else 0) + (
+            int(errors[-1]) if errors else 0
         )
         if "OK" in output:
             failed = 0
@@ -207,7 +205,9 @@ class BenchmarkService:
             error = f"Test command timed out after {bounded_timeout} seconds"
         elif result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip()
-            error = detail[-8000:] if detail else f"Test command exited {result.returncode}"
+            error = (
+                detail[-8000:] if detail else f"Test command exited {result.returncode}"
+            )
 
         return TestExecution(
             process=result,
@@ -438,12 +438,13 @@ class BenchmarkService:
         ended_at = utc_now()
         duration = (ended_at - started_at).total_seconds()
 
-        setup_failed = (
-            setup_result is not None
-            and (setup_result.returncode != 0 or setup_result.timed_out)
+        setup_failed = setup_result is not None and (
+            setup_result.returncode != 0 or setup_result.timed_out
         )
         tests_requirement_met = (
-            test_execution.passed if test_execution is not None else not bool(task.test_command)
+            test_execution.passed
+            if test_execution is not None
+            else not bool(task.test_command)
         )
         agent_succeeded = (
             agent_result is not None

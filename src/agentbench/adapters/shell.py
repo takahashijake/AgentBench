@@ -57,7 +57,9 @@ class ShellAgentAdapter(AgentAdapter):
     ) -> Tuple[int, str, str]:
         working_dir = Path(cwd) if cwd is not None else self.workspace_path
         if working_dir is None:
-            raise RuntimeError("No working directory specified and adapter is not prepared")
+            raise RuntimeError(
+                "No working directory specified and adapter is not prepared"
+            )
 
         argv = self.build_argv(prompt)
         self.last_result = run_process(argv, cwd=working_dir, timeout=timeout)

@@ -22,7 +22,9 @@ def default_artifact_root() -> Path:
 def _safe_relative_path(relative_path: str | Path) -> Path:
     relative = Path(relative_path)
     if relative.is_absolute() or ".." in relative.parts:
-        raise ValueError(f"Artifact path must stay within the run directory: {relative_path}")
+        raise ValueError(
+            f"Artifact path must stay within the run directory: {relative_path}"
+        )
     return relative
 
 
@@ -38,7 +40,11 @@ class RunArtifactStore:
         artifact_root: Optional[Path] = None,
         task_id: Optional[int] = None,
     ) -> "RunArtifactStore":
-        base = Path(artifact_root).expanduser().resolve() if artifact_root else default_artifact_root()
+        base = (
+            Path(artifact_root).expanduser().resolve()
+            if artifact_root
+            else default_artifact_root()
+        )
         base.mkdir(parents=True, exist_ok=True)
 
         task_component = f"task-{task_id}" if task_id is not None else "task-unknown"

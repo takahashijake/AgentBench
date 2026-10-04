@@ -93,8 +93,7 @@ def test_matrix_planning_is_deterministic_and_deduplicates_ids(tmp_path: Path):
     )
     assert [trial.ordinal for trial in trials] == list(range(1, 9))
     assert [
-        (trial.task_id, trial.agent_config_id, trial.repetition)
-        for trial in trials
+        (trial.task_id, trial.agent_config_id, trial.repetition) for trial in trials
     ] == [
         (task_a.id, agent_a.id, 1),
         (task_a.id, agent_a.id, 2),

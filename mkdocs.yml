@@ -1,0 +1,34 @@
+site_name: AgentBench
+site_description: Extensible, reproducible evaluation infrastructure for coding agents
+repo_url: https://github.com/takahashijake/AgentBench
+docs_dir: docs
+site_dir: site
+strict: true
+
+theme:
+  name: mkdocs
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+      - Configuration: getting-started/configuration.md
+  - Concepts:
+      - Architecture: concepts/architecture.md
+      - Execution Model: concepts/execution-model.md
+  - Guides:
+      - Running Benchmarks: guides/running-benchmarks.md
+      - Interpreting Results: guides/interpreting-results.md
+      - Extensions: EXTENSIONS.md
+      - Result Bundles: RESULT_BUNDLES.md
+  - Reference:
+      - CLI: reference/cli.md
+      - Result Schemas: reference/result-schema.md
+      - Manifest: MANIFEST.md
+      - Statistics: STATISTICS.md
+  - Development:
+      - Development Setup: development/development-setup.md
+      - Testing and QA: development/testing.md
+      - Release Process: development/release-process.md
+  - Troubleshooting: troubleshooting.md

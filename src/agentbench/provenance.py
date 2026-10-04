@@ -16,7 +16,6 @@ from pathlib import Path
 import shlex
 import shutil
 import subprocess
-import sys
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,7 +57,9 @@ def canonical_sha256(payload: Any) -> str:
     return sha256(_canonical_bytes(payload)).hexdigest()
 
 
-def _run_probe(argv: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run_probe(
+    argv: list[str], *, cwd: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             argv,
@@ -69,14 +70,14 @@ def _run_probe(argv: list[str], *, cwd: Path | None = None) -> subprocess.Comple
             timeout=_VERSION_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return subprocess.CompletedProcess(argv, 127, "", f"{type(exc).__name__}: {exc}")
+        return subprocess.CompletedProcess(
+            argv, 127, "", f"{type(exc).__name__}: {exc}"
+        )
 
 
 def _bounded_version_text(result: subprocess.CompletedProcess[str]) -> str | None:
     combined = "\n".join(
-        part.strip()
-        for part in (result.stdout, result.stderr)
-        if part and part.strip()
+        part.strip() for part in (result.stdout, result.stderr) if part and part.strip()
     ).strip()
     if not combined:
         return None
@@ -109,9 +110,7 @@ def executable_identity(command_template: str) -> dict[str, Any]:
     executable = tokens[0]
     resolved = shutil.which(executable)
     if resolved is None:
-        raise ValueError(
-            f"Agent executable is not available on PATH: {executable}"
-        )
+        raise ValueError(f"Agent executable is not available on PATH: {executable}")
 
     resolved_path = Path(resolved).resolve()
     version_probe = _run_probe([str(resolved_path), "--version"])
@@ -240,9 +239,7 @@ def load_suite_lock(path: str | Path) -> dict[str, Any]:
         raise ValueError(f"Invalid suite lock JSON: {exc}") from exc
     lock = SuiteLock.model_validate(raw)
     if lock.lock_schema_version not in SUPPORTED_LOCK_SCHEMA_VERSIONS:
-        raise ValueError(
-            f"Unsupported lock_schema_version: {lock.lock_schema_version}"
-        )
+        raise ValueError(f"Unsupported lock_schema_version: {lock.lock_schema_version}")
     payload = lock.model_dump(mode="json")
     claimed = payload.pop("identity_sha256")
     calculated = canonical_sha256(payload)

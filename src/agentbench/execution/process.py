@@ -20,7 +20,9 @@ class ProcessResult:
     duration_seconds: float
 
 
-def _terminate_process_tree(process: subprocess.Popen[str], grace_seconds: float = 2.0) -> None:
+def _terminate_process_tree(
+    process: subprocess.Popen[str], grace_seconds: float = 2.0
+) -> None:
     if process.poll() is not None:
         return
 

@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — Productization and Release Readiness
+
+### Developer experience
+
+- added a unified `Makefile` with install, lint, format, type-check, test, docs, build, smoke, and `make qa` targets
+- added Ruff, mypy, MkDocs, build/Twine, coverage, and pre-commit development tooling
+- documented Python 3.11–3.13 support and fresh-environment setup
+- added Docker build/runtime artifacts for a minimal installed CLI environment
+
+### CI and release engineering
+
+- split CI into a static/package quality job and cross-version integration jobs
+- added lint and formatter verification
+- added targeted type-checking for stable domain/extension contracts
+- added coverage reporting and an explicit critical-path floor
+- added strict documentation builds and wheel/sdist validation
+- added a tag-triggered release-candidate build workflow that uploads validated artifacts without publishing them
+
+### Documentation and governance
+
+- added an MkDocs documentation hierarchy for installation, configuration, execution, result interpretation, QA, schemas, and releases
+- refreshed the portfolio demo from V2 to V3
+- added wiki-ready operational pages
+- added contribution, security, conduct, issue, and pull-request guidance
+- expanded generated-artifact and secret hygiene
+
 ## 3.0.0 — Extensibility and Software Engineering
 
 AgentBench V3 restructures the project around explicit extension contracts while
@@ -64,28 +90,11 @@ preserving V1 execution integrity and V2 statistical semantics.
 
 ### QA
 
-V3 adds tests for:
-
-- provider registration and collisions
-- optional provider failure isolation
-- adapter dependency injection
-- full workflow injection
-- cross-session injection rejection
-- architecture dependency direction
-- deterministic result bundle bytes
-- bundle tamper and path-traversal rejection
-- host-independent portable metadata
-- application-factory route parity
-- V3 schema/version compatibility
-
-CI compiles source/tests, exercises the installed V3 CLI, validates provider →
-schema-3 manifest → lock workflows, builds the FastAPI application factory on
-Python 3.11 and 3.13, and runs the complete test suite.
+V3 adds tests for provider registration/collisions, optional provider failure isolation, adapter and workflow injection, architecture direction, deterministic/tamper-resistant bundles, host-independent portable metadata, application-factory parity, and schema compatibility.
 
 ## 2.0.0 — Portfolio V2
 
-AgentBench V2 turns the reproducible V1 runner into a complete local coding-agent
-evaluation product.
+AgentBench V2 turns the reproducible V1 runner into a complete local coding-agent evaluation product.
 
 ### Benchmark corpus
 

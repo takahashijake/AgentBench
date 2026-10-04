@@ -1,0 +1,39 @@
+name: Bug report
+description: Report reproducible incorrect AgentBench behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: AgentBench version
+      placeholder: "3.0.0"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Python version and OS
+      placeholder: "Python 3.11.10, Ubuntu 24.04"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include the smallest safe configuration/commands needed. Remove credentials and private data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized logs
+      description: Never paste API keys, tokens, private prompts, or secret-bearing environment dumps.
+    validations:
+      required: true
