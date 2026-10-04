@@ -18,27 +18,48 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e ".[dev]"
 
-      - name: Installed CLI smoke test
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Compile source and tests
+        run: python -m compileall -q src tests
+
+      - name: Installed V3 CLI smoke
         run: |
           agentbench --version
           agentbench --help
           agentbench doctor
           agentbench pack list
-          agentbench pack show core-v2
+          agentbench pack show core-v3
 
-      - name: V2 benchmark-pack reproducibility smoke
+      - name: V3 provider-to-lock reproducibility smoke
         run: |
           agentbench pack materialize smoke-v2 \
-            --output /tmp/agentbench-smoke-v2 \
+            --output /tmp/agentbench-smoke-v3 \
             --agent 'fixture=python -c "print(1)" {prompt}' \
             --repetitions 2
-          agentbench validate /tmp/agentbench-smoke-v2/suite.yaml
-          agentbench lock /tmp/agentbench-smoke-v2/suite.yaml \
-            --output /tmp/agentbench-smoke-v2/suite.lock.json
-          agentbench verify /tmp/agentbench-smoke-v2/suite.yaml \
-            /tmp/agentbench-smoke-v2/suite.lock.json
+          agentbench validate /tmp/agentbench-smoke-v3/suite.yaml
+          agentbench lock /tmp/agentbench-smoke-v3/suite.yaml \
+            --output /tmp/agentbench-smoke-v3/suite.lock.json
+          agentbench verify /tmp/agentbench-smoke-v3/suite.yaml \
+            /tmp/agentbench-smoke-v3/suite.lock.json
 
-      - run: pytest
+      - name: Application factory smoke
+        run: |
+          python - <<'PY'
+          from agentbench import __version__
+          from agentbench.api import create_app
+          from agentbench.packs import default_pack_registry
+
+          assert __version__ == "3.0.0"
+          assert create_app().version == "3.0.0"
+          registry = default_pack_registry()
+          assert "agentbench.builtin" in registry.provider_ids
+          assert registry.get("core-v3").pack.version == "3.0.0"
+          PY
+
+      - name: Test suite
+        run: pytest
