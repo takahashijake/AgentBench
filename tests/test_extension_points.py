@@ -86,7 +86,7 @@ def test_pack_registry_supports_external_provider_without_core_changes(tmp_path:
     )
     loaded = load_suite_manifest(result.manifest_path)
 
-    assert loaded.manifest.schema_version == 3
+    assert loaded.manifest.schema_version == 4
     assert loaded.manifest.benchmark_pack.provider == "example.provider"
     assert result.planned_runs == 2
 

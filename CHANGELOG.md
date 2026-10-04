@@ -1,5 +1,33 @@
 # Changelog
 
+## 4.0.0 — Benchmark Ecosystem and Resource-aware Execution
+
+### Corpus
+
+- added `engineering-v4`, a twelve-task deterministic software-engineering corpus
+- added bounded-retry, JSONL diagnostics, plugin-registry architecture, and atomic configuration-state tasks
+- retained V2/V3 packs as compatibility corpora
+
+### Resource requirements
+
+- added immutable task requirements for CPU count, physical memory, platform allowlists, and required commands
+- added `agentbench pack preflight <pack>` with machine-readable eligibility diagnostics
+- incompatible trials terminate as explicit `skipped` cells before agent execution
+- success-rate denominators use eligible planned runs so host limitations are not scored as agent failures
+
+### Reproducibility
+
+- suite manifest schema 4 carries task requirements
+- suite-lock schema 3 includes requirements in drift detection
+- analysis schema 4 distinguishes planned, eligible, skipped, benchmark, and orchestration-error counts
+- suite report schema 4 and portable task snapshots expose frozen requirements
+
+### Product surface
+
+- AgentBench package/API version 4.0.0
+- CI and local smoke workflows preflight the V4 corpus
+- resource contracts are included in targeted type checking
+
 ## Unreleased — Productization and Release Readiness
 
 ### Developer experience

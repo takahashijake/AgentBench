@@ -4,6 +4,7 @@ A safe first run uses the built-in deterministic smoke pack.
 
 ```bash
 agentbench pack show smoke-v2
+agentbench pack preflight engineering-v4
 
 agentbench pack materialize smoke-v2 \
   --output ./benchmarks/smoke-v2 \
@@ -11,6 +12,7 @@ agentbench pack materialize smoke-v2 \
   --repetitions 1
 
 agentbench validate ./benchmarks/smoke-v2/suite.yaml
+agentbench preflight ./benchmarks/smoke-v2/suite.yaml
 
 agentbench lock ./benchmarks/smoke-v2/suite.yaml \
   --output ./benchmarks/smoke-v2/suite.lock.json

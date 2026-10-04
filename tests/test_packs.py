@@ -12,7 +12,12 @@ from sqlalchemy.orm import sessionmaker
 from agentbench.cli import main
 from agentbench.manifests import load_suite_manifest
 from agentbench.models.database import Base
-from agentbench.packs import list_packs, materialize_pack, parse_agent_spec
+from agentbench.packs import (
+    list_packs,
+    materialize_pack,
+    parse_agent_spec,
+    preflight_pack,
+)
 from agentbench.provenance import build_suite_lock
 from agentbench.services.suite import SuiteService
 
@@ -27,12 +32,15 @@ AGENT = {
 def test_builtin_pack_catalog_has_portfolio_task_coverage():
     packs = {row["id"]: row for row in list_packs()}
 
-    assert {"smoke-v2", "core-v2", "core-v3"} <= set(packs)
+    assert {"smoke-v2", "core-v2", "core-v3", "engineering-v4"} <= set(packs)
     core = packs["core-v2"]
     assert core["task_count"] == 4
     assert core["provider"] == "agentbench.builtin"
     assert packs["core-v3"]["task_count"] == 8
     assert packs["core-v3"]["provider"] == "agentbench.builtin"
+    assert packs["engineering-v4"]["task_count"] == 12
+    assert packs["engineering-v4"]["provider"] == "agentbench.builtin"
+    assert all("requirements" in task for task in packs["engineering-v4"]["tasks"])
     assert {task["category"] for task in core["tasks"]} == {
         "bugfix",
         "feature",
@@ -59,7 +67,7 @@ def test_pack_materialization_is_deterministic_and_manifest_is_v3(tmp_path: Path
     assert first["planned_runs"] == 6
 
     loaded = load_suite_manifest(first["manifest_path"])
-    assert loaded.manifest.schema_version == 3
+    assert loaded.manifest.schema_version == 4
     assert loaded.manifest.benchmark_pack.id == "smoke-v2"
     assert loaded.manifest.benchmark_pack.provider == "agentbench.builtin"
     assert loaded.manifest.experiment.repetitions == 3
@@ -85,7 +93,7 @@ def test_pack_materialization_is_deterministic_and_manifest_is_v3(tmp_path: Path
         assert status == ""
 
 
-def test_pack_fixtures_begin_unsolved(tmp_path: Path):
+def test_smoke_pack_fixtures_begin_unsolved(tmp_path: Path):
     result = materialize_pack(
         "smoke-v2",
         tmp_path / "pack",
@@ -131,7 +139,7 @@ def test_pack_cli_lists_and_materializes(tmp_path: Path, capsys):
         == 0
     )
     generated = json.loads(capsys.readouterr().out)
-    assert generated["schema_version"] == 3
+    assert generated["schema_version"] == 4
     assert generated["planned_runs"] == 4
     assert (output / "suite.yaml").is_file()
 
@@ -158,7 +166,7 @@ def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
     loaded = load_suite_manifest(result["manifest_path"])
 
     lock = build_suite_lock(loaded)
-    assert lock["suite"]["schema_version"] == 3
+    assert lock["suite"]["schema_version"] == 4
     assert lock["suite"]["benchmark_pack"]["id"] == "smoke-v2"
     assert lock["suite"]["benchmark_pack"]["version"] == "2.0.0"
     assert lock["suite"]["benchmark_pack"]["provider"] == "agentbench.builtin"
@@ -178,9 +186,9 @@ def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
         {"analysis_schema_version": 3, "overall": {}},
     )
 
-    assert report["report_schema_version"] == 3
+    assert report["report_schema_version"] == 4
     assert report["suite"]["benchmark_pack"]["id"] == "smoke-v2"
-    assert report["suite"]["schema_version"] == 3
+    assert report["suite"]["schema_version"] == 4
     assert {task["category"] for task in report["resources"]["tasks"]} == {
         "bugfix",
         "feature",
@@ -240,3 +248,61 @@ else:
     )
     assert summary["ranking"]["entries"][0]["success_rate"] == 1.0
     assert len(imported.task_ids) == 2
+
+
+def test_engineering_v4_preflight_and_materialization_include_requirements(
+    tmp_path: Path,
+):
+    preflight = preflight_pack("engineering-v4")
+
+    assert preflight["eligible"] is True
+    assert preflight["task_count"] == 12
+    assert preflight["ineligible_task_count"] == 0
+
+    result = materialize_pack(
+        "engineering-v4",
+        tmp_path / "engineering-v4",
+        agents=[AGENT],
+        repetitions=1,
+    )
+    loaded = load_suite_manifest(result["manifest_path"])
+
+    assert loaded.manifest.schema_version == 4
+    assert loaded.manifest.benchmark_pack.id == "engineering-v4"
+    assert len(loaded.manifest.tasks) == 12
+    by_id = {task.id: task for task in loaded.manifest.tasks}
+    assert by_id["feature-bounded-retry"].requirements.required_commands == ["python"]
+    assert by_id["feature-bounded-retry"].requirements.min_memory_mb == 64
+
+
+def test_pack_preflight_cli_is_machine_readable(capsys):
+    assert main(["pack", "preflight", "engineering-v4"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["pack_id"] == "engineering-v4"
+    assert payload["eligible"] is True
+    assert payload["task_count"] == 12
+
+
+def test_engineering_v4_fixtures_begin_unsolved(tmp_path: Path):
+    result = materialize_pack(
+        "engineering-v4",
+        tmp_path / "engineering-unsolved",
+        agents=[AGENT],
+        repetitions=1,
+    )
+    loaded = load_suite_manifest(result["manifest_path"])
+
+    returncodes = {}
+    for task in loaded.manifest.tasks:
+        completed = subprocess.run(
+            ["python", "-m", "unittest", "-q"],
+            cwd=loaded.resolve_repository_path(task),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        returncodes[task.id] = completed.returncode
+
+    assert len(returncodes) == 12
+    assert all(code != 0 for code in returncodes.values())

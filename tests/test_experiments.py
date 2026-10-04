@@ -15,6 +15,7 @@ from agentbench.models.database import (
     BenchmarkTask,
     ExperimentTrial,
 )
+from agentbench.resources import ResourceEligibility
 from agentbench.services.experiment import ExperimentBusyError, ExperimentService
 
 from helpers import init_git_repo
@@ -185,7 +186,7 @@ def test_matrix_executes_two_by_two_by_two_and_is_idempotent(tmp_path: Path):
     assert all(row["metrics"]["planned_runs"] == 4 for row in summary["by_task"])
     assert all(row["metrics"]["planned_runs"] == 2 for row in summary["by_cell"])
     assert all(row["metrics"]["success_rate"] == 1 for row in summary["by_cell"])
-    assert summary["analysis_schema_version"] == 3
+    assert summary["analysis_schema_version"] == 4
     assert summary["overall"]["statistics"]["success_rate_confidence_interval_95"]
     assert summary["overall"]["runtime_seconds"]["median"] is not None
     assert len(summary["ranking"]["entries"]) == 2
@@ -335,3 +336,115 @@ def test_running_trial_blocks_parallel_matrix_execution(tmp_path: Path):
         service.execute_experiment(experiment.id)
 
     assert db.query(BenchmarkRun).count() == 0
+
+
+class RejectingResourceInspector:
+    def evaluate(self, requirements):
+        return ResourceEligibility(
+            eligible=False,
+            reasons=("fixture host is intentionally incompatible",),
+            observed={"platform": "fixture"},
+        )
+
+
+def test_resource_incompatible_trial_is_skipped_without_penalizing_agent(
+    tmp_path: Path,
+):
+    repo = tmp_path / "target-resource-skip"
+    base_commit = init_git_repo(repo)
+    db = make_session()
+
+    agent = add_agent(db, "resource-agent", "pass")
+    task = add_task(db, name="resource-task", repo=repo, base_commit=base_commit)
+    service = ExperimentService(
+        db,
+        artifact_root=tmp_path / "artifacts",
+        resource_inspector=RejectingResourceInspector(),
+    )
+    experiment = service.create_experiment(
+        name="resource-aware",
+        task_ids=[task.id],
+        agent_config_ids=[agent.id],
+        task_requirements={
+            task.id: {
+                "min_cpu_count": 8,
+                "required_commands": ["special-tool"],
+            }
+        },
+    )
+
+    completed = service.execute_experiment(experiment.id)
+    summary = service.aggregate_experiment(experiment.id)
+
+    assert completed.status == "completed"
+    assert completed.trials[0].status == "skipped"
+    assert "Resource requirements not satisfied" in completed.trials[0].error
+    assert db.query(BenchmarkRun).count() == 0
+    assert summary["analysis_schema_version"] == 4
+    assert summary["overall"]["planned_runs"] == 1
+    assert summary["overall"]["eligible_planned_runs"] == 0
+    assert summary["overall"]["skipped_runs"] == 1
+    assert summary["overall"]["success_rate"] is None
+    assert summary["overall"]["orchestration_errors"] == 0
+
+
+class SelectiveResourceInspector:
+    def evaluate(self, requirements):
+        if requirements.min_cpu_count >= 8:
+            return ResourceEligibility(
+                eligible=False,
+                reasons=("fixture high-resource task is incompatible",),
+                observed={"platform": "fixture", "cpu_count": 4},
+            )
+        return ResourceEligibility(
+            eligible=True,
+            reasons=(),
+            observed={"platform": "fixture", "cpu_count": 4},
+        )
+
+
+def test_skipped_trials_are_excluded_from_success_rate_denominator(tmp_path: Path):
+    repo = tmp_path / "target-mixed-resource"
+    base_commit = init_git_repo(repo)
+    db = make_session()
+
+    agent = add_agent(db, "mixed-resource-agent", "pass")
+    eligible_task = add_task(
+        db,
+        name="eligible-task",
+        repo=repo,
+        base_commit=base_commit,
+    )
+    skipped_task = add_task(
+        db,
+        name="skipped-task",
+        repo=repo,
+        base_commit=base_commit,
+    )
+    service = ExperimentService(
+        db,
+        artifact_root=tmp_path / "artifacts",
+        resource_inspector=SelectiveResourceInspector(),
+    )
+    experiment = service.create_experiment(
+        name="mixed-resource-denominator",
+        task_ids=[eligible_task.id, skipped_task.id],
+        agent_config_ids=[agent.id],
+        task_requirements={
+            eligible_task.id: {"min_cpu_count": 1},
+            skipped_task.id: {"min_cpu_count": 8},
+        },
+    )
+
+    completed = service.execute_experiment(experiment.id)
+    summary = service.aggregate_experiment(experiment.id)
+
+    assert completed.status == "completed"
+    assert [trial.status for trial in completed.trials] == ["completed", "skipped"]
+    assert db.query(BenchmarkRun).count() == 1
+    assert summary["overall"]["planned_runs"] == 2
+    assert summary["overall"]["eligible_planned_runs"] == 1
+    assert summary["overall"]["skipped_runs"] == 1
+    assert summary["overall"]["successful_runs"] == 1
+    assert summary["overall"]["success_rate"] == 1.0
+    assert summary["overall"]["completion_rate"] == 1.0

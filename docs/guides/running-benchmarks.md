@@ -1,8 +1,8 @@
 # Running Benchmarks
 
-The reliable workflow is **materialize → validate → lock → verify → replay → report**.
+The reliable workflow is **preflight → materialize → validate → lock → verify → replay → report**.
 
-Use `agentbench pack list` to discover built-in corpora and `agentbench pack show <id>` to inspect one before materialization.
+Use `agentbench pack list` to discover corpora, `agentbench pack show <id>` to inspect one, and `agentbench pack preflight <id>` to check host eligibility before materialization.
 
 For a real comparison:
 
@@ -14,6 +14,7 @@ agentbench pack materialize core-v3 \
   --repetitions 5
 
 agentbench validate ./benchmarks/core-v3/suite.yaml
+agentbench preflight ./benchmarks/core-v3/suite.yaml
 agentbench lock ./benchmarks/core-v3/suite.yaml -o ./benchmarks/core-v3/suite.lock.json
 agentbench verify ./benchmarks/core-v3/suite.yaml ./benchmarks/core-v3/suite.lock.json
 agentbench replay ./benchmarks/core-v3/suite.yaml ./benchmarks/core-v3/suite.lock.json \

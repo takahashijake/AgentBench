@@ -11,11 +11,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable
 
+from .resources import HostResourceInspector
+
 from .benchmark_packs import (
     BenchmarkPack,
     BuiltinPackProvider,
     CORE_V2,
     CORE_V3,
+    CORE_V4,
     PackMaterializer,
     PackRegistry,
     PackTaskSpec,
@@ -46,6 +49,46 @@ def get_pack(pack_id: str, registry: PackRegistry | None = None) -> BenchmarkPac
     return (registry or default_pack_registry()).get(pack_id).pack
 
 
+def preflight_pack(
+    pack_id: str,
+    *,
+    registry: PackRegistry | None = None,
+    inspector: HostResourceInspector | None = None,
+) -> dict[str, Any]:
+    """Evaluate whether the current host can execute every task in a pack."""
+
+    active_registry = registry or default_pack_registry()
+    resolved = active_registry.get(pack_id)
+    active_inspector = inspector or HostResourceInspector()
+    tasks: list[dict[str, Any]] = []
+    eligible_count = 0
+
+    for task in resolved.pack.tasks:
+        evaluation = active_inspector.evaluate(task.requirements)
+        if evaluation.eligible:
+            eligible_count += 1
+        tasks.append(
+            {
+                "id": task.id,
+                "eligible": evaluation.eligible,
+                "requirements": task.requirements.as_dict(),
+                "reasons": list(evaluation.reasons),
+                "observed": evaluation.observed,
+            }
+        )
+
+    return {
+        "pack_id": resolved.pack.id,
+        "pack_version": resolved.pack.version,
+        "provider_id": resolved.provider_id,
+        "eligible": eligible_count == len(tasks),
+        "eligible_task_count": eligible_count,
+        "ineligible_task_count": len(tasks) - eligible_count,
+        "task_count": len(tasks),
+        "tasks": tasks,
+    }
+
+
 def materialize_pack(
     pack_id: str,
     output_dir: str | Path,
@@ -68,6 +111,7 @@ __all__ = [
     "BuiltinPackProvider",
     "CORE_V2",
     "CORE_V3",
+    "CORE_V4",
     "PackRegistry",
     "PackTaskSpec",
     "SMOKE_V2",
@@ -77,4 +121,5 @@ __all__ = [
     "list_packs",
     "materialize_pack",
     "parse_agent_spec",
+    "preflight_pack",
 ]

@@ -13,7 +13,14 @@ from pydantic import ValidationError
 from . import __version__
 from .manifests import LoadedSuiteManifest, load_suite_manifest
 from .models.session import close_session, get_session, init_db
-from .packs import get_pack, list_packs, materialize_pack, parse_agent_spec
+from .packs import (
+    get_pack,
+    list_packs,
+    materialize_pack,
+    parse_agent_spec,
+    preflight_pack,
+)
+from .preflight import preflight_suite
 from .provenance import (
     build_suite_lock,
     environment_identity,
@@ -134,6 +141,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show one built-in pack and its tasks.",
     )
     pack_show.add_argument("pack_id")
+    pack_preflight = pack_subparsers.add_parser(
+        "preflight",
+        help="Check task host requirements before materializing or running a pack.",
+    )
+    pack_preflight.add_argument("pack_id")
     pack_materialize = pack_subparsers.add_parser(
         "materialize",
         help="Create deterministic Git fixtures and a runnable suite manifest.",
@@ -160,6 +172,12 @@ def _build_parser() -> argparse.ArgumentParser:
         default=5,
         help="Repeated trials per task/agent cell (default: 5).",
     )
+
+    preflight = subparsers.add_parser(
+        "preflight",
+        help="Check a materialized suite host, repositories, and agent executables.",
+    )
+    preflight.add_argument("manifest")
 
     validate = subparsers.add_parser(
         "validate",
@@ -233,7 +251,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     results = subparsers.add_parser(
         "results",
-        help="Export aggregate V2 results for an existing experiment ID.",
+        help="Export aggregate results for an existing experiment ID.",
     )
     results.add_argument("experiment_id", type=int)
     _add_report_outputs(results)
@@ -407,6 +425,11 @@ def _run_pack_command(args: argparse.Namespace) -> int:
         _write_json(payload)
         return 0
 
+    if args.pack_command == "preflight":
+        payload = preflight_pack(args.pack_id)
+        _write_json(payload)
+        return 0 if payload["eligible"] else 3
+
     if args.pack_command == "materialize":
         agents = [parse_agent_spec(value) for value in args.agent]
         result = materialize_pack(
@@ -431,6 +454,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         if args.command == "pack":
             return _run_pack_command(args)
+
+        if args.command == "preflight":
+            loaded = load_suite_manifest(args.manifest)
+            payload = preflight_suite(loaded)
+            _write_json(payload)
+            return 0 if payload["ready"] else 3
 
         if args.command == "validate":
             loaded = load_suite_manifest(args.manifest)

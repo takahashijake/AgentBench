@@ -6,8 +6,10 @@ execute benchmarks; materialization is owned by PackMaterializer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
+
+from ..resources import TaskRequirements
 
 
 _RESOURCE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -25,6 +27,7 @@ class PackTaskSpec:
     test_command: str = "python -m unittest -q"
     timeout: int = 600
     setup_command: str | None = None
+    requirements: TaskRequirements = field(default_factory=TaskRequirements)
 
     def __post_init__(self) -> None:
         if not _RESOURCE_ID_RE.fullmatch(self.id):

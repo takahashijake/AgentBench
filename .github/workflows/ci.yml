@@ -36,7 +36,8 @@ jobs:
 
       - name: Type-check stable contracts
         run: |
-          python -m mypy             src/agentbench/manifests.py             src/agentbench/statistics.py             src/agentbench/benchmark_packs/models.py             src/agentbench/adapters/base.py
+          python -m mypy             src/agentbench/manifests.py             src/agentbench/statistics.py             src/agentbench/benchmark_packs/models.py             src/agentbench/adapters/base.py \
+            src/agentbench/resources.py
 
       - name: Test with coverage
         run: |
@@ -88,11 +89,14 @@ jobs:
           agentbench doctor
           agentbench pack list
           agentbench pack show core-v3
+          agentbench pack show engineering-v4
+          agentbench pack preflight engineering-v4
 
       - name: Provider-to-lock reproducibility smoke
         run: |
           agentbench pack materialize smoke-v2             --output /tmp/agentbench-smoke-v3             --agent 'fixture=python -c "print(1)" {prompt}'             --repetitions 2
           agentbench validate /tmp/agentbench-smoke-v3/suite.yaml
+          agentbench preflight /tmp/agentbench-smoke-v3/suite.yaml
           agentbench lock /tmp/agentbench-smoke-v3/suite.yaml             --output /tmp/agentbench-smoke-v3/suite.lock.json
           agentbench verify /tmp/agentbench-smoke-v3/suite.yaml             /tmp/agentbench-smoke-v3/suite.lock.json
 
@@ -103,11 +107,12 @@ jobs:
           from agentbench.api import create_app
           from agentbench.packs import default_pack_registry
 
-          assert __version__ == "3.0.0"
-          assert create_app().version == "3.0.0"
+          assert __version__ == "4.0.0"
+          assert create_app().version == "4.0.0"
           registry = default_pack_registry()
           assert "agentbench.builtin" in registry.provider_ids
           assert registry.get("core-v3").pack.version == "3.0.0"
+          assert registry.get("engineering-v4").pack.version == "4.0.0"
           PY
 
       - name: Full integration test suite
