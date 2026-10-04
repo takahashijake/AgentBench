@@ -6,10 +6,13 @@ from .experiment import (
     ExperimentNotFoundError,
     ExperimentService,
 )
+from .suite import SuiteImportResult, SuiteService
 
 __all__ = [
     "BenchmarkService",
     "ExperimentService",
     "ExperimentNotFoundError",
     "ExperimentBusyError",
+    "SuiteImportResult",
+    "SuiteService",
 ]
