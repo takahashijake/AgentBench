@@ -264,11 +264,6 @@ class SuiteService:
                         "id": resource_id,
                         "database_id": imported.agent_config_ids[resource_id],
                         "description": agents_by_id[resource_id].description,
-                        "adapter_family": (
-                            agents_by_id[resource_id].command_template.split()[0]
-                            if agents_by_id[resource_id].command_template
-                            else None
-                        ),
                     }
                     for resource_id in loaded.manifest.selected_agent_ids()
                 ],
