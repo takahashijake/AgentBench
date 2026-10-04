@@ -278,6 +278,39 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Required acknowledgement that no worker process is still executing.",
     )
 
+    worker = subparsers.add_parser(
+        "worker",
+        help="Run or inspect durable cross-process experiment workers.",
+    )
+    worker_subparsers = worker.add_subparsers(dest="worker_command", required=True)
+
+    worker_run = worker_subparsers.add_parser(
+        "run",
+        help="Claim and execute available trials with durable leases.",
+    )
+    worker_run.add_argument("experiment_id", type=int)
+    worker_run.add_argument("--owner")
+    worker_run.add_argument("--lease-seconds", type=int, default=60)
+    worker_run.add_argument("--max-trials", type=int)
+
+    worker_status = worker_subparsers.add_parser(
+        "status",
+        help="Inspect durable worker claims and lease state.",
+    )
+    worker_status.add_argument("experiment_id", type=int)
+
+    worker_recover = worker_subparsers.add_parser(
+        "recover-expired",
+        help="Explicitly requeue expired durable worker claims.",
+    )
+    worker_recover.add_argument("experiment_id", type=int)
+    worker_recover.add_argument("--grace-seconds", type=int, default=0)
+    worker_recover.add_argument(
+        "--confirm-expired",
+        action="store_true",
+        help="Required acknowledgement before requeueing expired worker claims.",
+    )
+
     results = subparsers.add_parser(
         "results",
         help="Export aggregate results for an existing experiment ID.",
@@ -375,7 +408,7 @@ def _experiment_report(
     summary = service.experiments.aggregate_experiment(experiment_id)
     latest_execution = summary.get("latest_execution") or {}
     return {
-        "report_schema_version": 5,
+        "report_schema_version": 6,
         "experiment": {
             "id": int(experiment.id),
             "name": experiment.name,
@@ -439,6 +472,39 @@ def _run_database_command(args: argparse.Namespace) -> int:
             )
             return 0
 
+        if args.command == "worker":
+            workers = DistributedWorkerService(
+                db,
+                experiment_service=service.experiments,
+            )
+            if args.worker_command == "run":
+                _write_json(
+                    workers.run_worker(
+                        args.experiment_id,
+                        owner_id=args.owner,
+                        lease_seconds=args.lease_seconds,
+                        max_trials=args.max_trials,
+                    )
+                )
+                return 0
+            if args.worker_command == "status":
+                _write_json(workers.status(args.experiment_id))
+                return 0
+            if args.worker_command == "recover-expired":
+                if not args.confirm_expired:
+                    raise ValueError(
+                        "worker recover-expired requires --confirm-expired because "
+                        "a disconnected worker may still be executing"
+                    )
+                _write_json(
+                    workers.recover_expired(
+                        args.experiment_id,
+                        grace_seconds=args.grace_seconds,
+                    )
+                )
+                return 0
+            raise ValueError(f"Unsupported worker command: {args.worker_command}")
+
         if args.command == "results":
             report = _experiment_report(service, args.experiment_id)
             _write_markdown(report, args.markdown)
@@ -449,7 +515,7 @@ def _run_database_command(args: argparse.Namespace) -> int:
             report = _experiment_report(service, args.experiment_id)
             summary = report["summary"]
             payload = {
-                "analysis_schema_version": summary.get("analysis_schema_version", 5),
+                "analysis_schema_version": summary.get("analysis_schema_version", 6),
                 "experiment": report["experiment"],
                 "ranking": summary.get("ranking"),
                 "pairwise_task_comparison": summary.get(

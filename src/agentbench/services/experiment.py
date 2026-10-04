@@ -15,6 +15,7 @@ from ..models.database import (
     Experiment,
     ExperimentExecution,
     ExperimentTrial,
+    ExperimentWorkerAttempt,
 )
 from ..statistics import (
     build_agent_ranking,
@@ -780,9 +781,48 @@ class ExperimentService:
             }
             for item in execution_rows
         ]
+        worker_rows = (
+            self.db.query(ExperimentWorkerAttempt)
+            .filter(ExperimentWorkerAttempt.experiment_id == experiment.id)
+            .order_by(ExperimentWorkerAttempt.id.asc())
+            .all()
+        )
+        worker_attempts = [
+            {
+                "id": int(item.id),
+                "trial_id": int(item.trial_id),
+                "owner_id": item.owner_id,
+                "status": item.status,
+                "acquired_at": item.acquired_at.isoformat(),
+                "heartbeat_at": item.heartbeat_at.isoformat(),
+                "expires_at": item.expires_at.isoformat(),
+                "completed_at": (
+                    item.completed_at.isoformat()
+                    if item.completed_at is not None
+                    else None
+                ),
+                "details": dict(item.details or {}),
+            }
+            for item in worker_rows
+        ]
+        now = utc_now()
+        worker_summary = {
+            "attempt_count": len(worker_attempts),
+            "active_count": sum(item.status == "active" for item in worker_rows),
+            "expired_active_count": sum(
+                item.status == "active" and item.expires_at <= now
+                for item in worker_rows
+            ),
+            "owners": sorted({item.owner_id for item in worker_rows}),
+            "status_counts": {
+                status: sum(item.status == status for item in worker_rows)
+                for status in sorted({item.status for item in worker_rows})
+            },
+        }
+
 
         return {
-            "analysis_schema_version": 5,
+            "analysis_schema_version": 6,
             "experiment_id": experiment.id,
             "name": experiment.name,
             "status": experiment.status,
@@ -794,6 +834,8 @@ class ExperimentService:
             "ranking": build_agent_ranking(by_agent_rows),
             "execution_history": execution_history,
             "latest_execution": execution_history[-1] if execution_history else None,
+            "worker_attempts": worker_attempts,
+            "worker_summary": worker_summary,
             "pairwise_task_comparison": build_pairwise_task_comparison(
                 by_cell_rows,
                 [int(agent_id) for agent_id in experiment.agent_config_ids],

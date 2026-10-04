@@ -20,7 +20,7 @@ from ..models.database import (
 )
 from ..timeutils import utc_now
 from .benchmark import BenchmarkService
-from .experiment import ExperimentService, TrialExecutionOutcome
+from .experiment import ExperimentBusyError, ExperimentService, TrialExecutionOutcome
 
 
 @dataclass(frozen=True)
@@ -98,6 +98,23 @@ class DistributedWorkerService:
         experiment = self.experiments.get_experiment(experiment_id)
         if experiment.status == "completed":
             return None
+        if experiment.status == "running":
+            active_modes = {
+                str(mode)
+                for (mode,) in (
+                    self.db.query(ExperimentExecution.mode)
+                    .filter(
+                        ExperimentExecution.experiment_id == experiment.id,
+                        ExperimentExecution.status == "running",
+                    )
+                    .all()
+                )
+            }
+            if not active_modes or active_modes - {"distributed_worker"}:
+                raise ExperimentBusyError(
+                    f"Experiment {experiment.id} is owned by a non-distributed "
+                    "execution"
+                )
         if experiment.stop_on_error:
             has_error = (
                 self.db.query(ExperimentTrial)
