@@ -88,6 +88,8 @@ def test_suite_preflight_reports_missing_task_repository(tmp_path: Path):
     payload = preflight_suite(loaded)
 
     assert payload["ready"] is False
-    failed = next(row for row in payload["tasks"] if row["id"] == loaded.manifest.tasks[0].id)
+    failed = next(
+        row for row in payload["tasks"] if row["id"] == loaded.manifest.tasks[0].id
+    )
     assert failed["ready"] is False
     assert "repository readiness failed" in failed["reasons"][0]
