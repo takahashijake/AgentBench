@@ -19,7 +19,7 @@ from ..models.database import (
     ExperimentWorkerAttempt,
     WorkerRegistration,
 )
-from ..resources import HostResourceInspector, TaskRequirements, WorkerCapabilities
+from ..resources import TaskRequirements, WorkerCapabilities
 from ..timeutils import utc_now
 from .experiment import ExperimentBusyError, ExperimentService, TrialExecutionOutcome
 
@@ -88,12 +88,6 @@ class DistributedWorkerService:
 
     def _required_commands(self, experiment_id: int) -> tuple[str, ...]:
         experiment = self.experiments.get_experiment(experiment_id)
-        capabilities = self.worker_capabilities(owner)
-        if capabilities is None:
-            capabilities = self.register_worker(
-                owner,
-                experiment_id=experiment_id,
-            )
         commands: set[str] = set()
         for snapshot in experiment.task_snapshots:
             requirements = TaskRequirements.from_mapping(snapshot.get("requirements"))
@@ -207,6 +201,12 @@ class DistributedWorkerService:
             raise ValueError("owner_id must not be empty")
         lease_seconds = self.validate_lease_seconds(lease_seconds)
         experiment = self.experiments.get_experiment(experiment_id)
+        capabilities = self.worker_capabilities(owner)
+        if capabilities is None:
+            capabilities = self.register_worker(
+                owner,
+                experiment_id=experiment_id,
+            )
         if experiment.status == "completed":
             return None
         if experiment.status == "running":
@@ -303,9 +303,9 @@ class DistributedWorkerService:
                 heartbeat_at=now,
                 expires_at=expires_at,
                 details={
-                "lease_seconds": lease_seconds,
-                "worker_capabilities": capabilities.as_dict(),
-            },
+                    "lease_seconds": lease_seconds,
+                    "worker_capabilities": capabilities.as_dict(),
+                },
             )
             self.db.add(attempt)
             (
