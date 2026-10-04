@@ -44,9 +44,14 @@ class SuiteService:
         artifact_root: Optional[Path] = None,
         setup_timeout: int = 300,
         test_timeout: Optional[int] = None,
+        experiment_service: Optional[ExperimentService] = None,
     ):
         self.db = db
-        self.experiments = ExperimentService(
+        if experiment_service is not None and experiment_service.db is not db:
+            raise ValueError(
+                "Injected ExperimentService must use the same database session"
+            )
+        self.experiments = experiment_service or ExperimentService(
             db,
             artifact_root=artifact_root,
             setup_timeout=setup_timeout,
