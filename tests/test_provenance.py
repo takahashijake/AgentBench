@@ -65,7 +65,7 @@ def test_suite_lock_is_deterministic_and_resolves_exact_inputs(tmp_path: Path):
     assert first["tasks"][0]["resolved_base_commit"] == commit
     assert first["agents"][0]["executable"]["command"]
     assert first["agents"][0]["executable"]["binary_sha256"]
-    assert first["environment"]["agentbench_version"] == "4.0.0"
+    assert first["environment"]["agentbench_version"] == "5.0.0"
 
 
 def test_lock_round_trip_and_tamper_detection(tmp_path: Path):
@@ -123,3 +123,29 @@ def test_cli_lock_and_verify(tmp_path: Path, capsys):
     verify_output = json.loads(capsys.readouterr().out)
     assert verify_output["valid"] is True
     assert verify_output["drift"] == []
+
+
+def test_worker_count_is_locked_and_reported_as_replay_drift(tmp_path: Path):
+    repo = tmp_path / "parallel-target"
+    commit = init_git_repo(repo)
+    manifest_path = write_manifest(tmp_path / "parallel-suite.yaml", repo, commit)
+
+    payload = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    payload["schema_version"] = 5
+    payload["experiment"]["max_workers"] = 2
+    manifest_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    loaded = load_suite_manifest(manifest_path)
+    expected = build_suite_lock(loaded)
+    assert expected["lock_schema_version"] == 4
+    assert expected["experiment"]["max_workers"] == 2
+
+    payload["experiment"]["max_workers"] = 3
+    manifest_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    changed = load_suite_manifest(manifest_path)
+    verification = verify_suite_lock(changed, expected)
+
+    assert verification["valid"] is False
+    assert any(
+        row["path"] == "experiment.max_workers" for row in verification["drift"]
+    )

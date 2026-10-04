@@ -108,8 +108,8 @@ jobs:
           from agentbench.api import create_app
           from agentbench.packs import default_pack_registry
 
-          assert __version__ == "4.0.0"
-          assert create_app().version == "4.0.0"
+          assert __version__ == "5.0.0"
+          assert create_app().version == "5.0.0"
           registry = default_pack_registry()
           assert "agentbench.builtin" in registry.provider_ids
           assert registry.get("core-v3").pack.version == "3.0.0"
