@@ -1,13 +1,13 @@
 # AgentBench V4 Architecture
 
-AgentBench V3 is organized around two invariants:
+AgentBench V4 is organized around two invariants:
 
 > **Evaluation claims must be traceable to reproducible evidence.**
 
 > **New capabilities must enter through explicit extension boundaries rather than
 > increasing coupling in the orchestration core.**
 
-V3 keeps the hardened V1 execution lifecycle and V2 statistical semantics, then
+V4 keeps the hardened V1 execution lifecycle, V2 statistical semantics, and V3 extension architecture, then
 restructures extension points around dependency inversion, composition roots, and
 portable contracts.
 
@@ -129,7 +129,7 @@ Discovery is a fault boundary: a broken optional plugin is reported in
 - output-directory validation
 - deterministic fixture file creation
 - Git initialization/commit identity
-- generated schema-3 manifest creation
+- generated schema-4 manifest creation
 
 Provider code does not receive filesystem responsibilities.
 
@@ -143,19 +143,19 @@ Provider code does not receive filesystem responsibilities.
 
 Responsibilities:
 
-- schema-v1/v2/v3 YAML/JSON validation
+- schema-v1/v2/v3/v4 YAML/JSON validation
 - resource identity and selection
 - relative repository-path resolution
 - canonical manifest serialization/hash
 - pack ID/version/provider metadata
 
-Generated V3 manifests use schema 3. Older schemas remain readable.
+Generated V4 manifests use schema 4. Older schemas remain readable.
 
 ## 3. Provenance and suite locks
 
 **Path:** `src/agentbench/provenance.py`
 
-New V3 locks use lock schema 2. Lock schema 1 remains readable so historical V2
+New V4 locks use lock schema 3. Lock schemas 1 and 2 remain readable so historical V2
 artifacts can be diagnosed and compared.
 
 Locks capture bounded material inputs:
@@ -253,7 +253,7 @@ Owns:
 - delegation of each cell to `BenchmarkService`
 - aggregation from canonical persisted data
 
-Analysis schema 3 adds paired comparison information but leaves ranking semantics
+Analysis schema 4 adds explicit resource-skipped/eligible counts while preserving paired comparison and ranking semantics
 explicit and deterministic.
 
 ## 8. Suite workflow
@@ -358,12 +358,12 @@ This converts architectural intent into executable regression protection.
 
 ## 13. Schema evolution policy
 
-V3 distinguishes independent persisted/public formats:
+V4 distinguishes independent persisted/public formats:
 
-- suite manifest schema: **3**
-- analysis schema: **3**
-- suite report schema: **3**
-- suite lock schema: **2**
+- suite manifest schema: **4**
+- analysis schema: **4**
+- suite report schema: **4**
+- suite lock schema: **3**
 - result-bundle schema: **1**
 
 Schema versions change when compatibility expectations change; they are not tied
@@ -374,7 +374,7 @@ Writers emit the current schema.
 
 ## Integrity invariants
 
-V3 is incomplete if any of these regress:
+V4 is incomplete if any of these regress:
 
 1. source repositories remain unchanged by trials
 2. trial workspaces are isolated

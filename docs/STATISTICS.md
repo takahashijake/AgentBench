@@ -1,43 +1,34 @@
 # Statistical analysis
 
-AgentBench V2 treats repeated trials as measurements rather than presenting one
-run as a definitive model comparison.
+AgentBench treats repeated trials as measurements rather than presenting one run as a definitive model comparison.
 
 ## Success-rate uncertainty
 
-For a group with `k` successful trials out of `n` planned trials, AgentBench
-reports the observed success rate and a two-sided 95% Wilson score interval.
+For a group with `k` successful eligible trials out of `n` eligible planned trials, AgentBench reports the observed success rate and a two-sided 95% Wilson score interval.
 
-Wilson intervals were chosen because they remain well behaved for small samples
-and success rates near zero or one.
+V4 distinguishes:
 
-The overall success denominator is the **planned trial count**. An orchestration
-error therefore does not silently disappear from the reliability picture.
+- `planned_runs` — every matrix cell intended by the experiment;
+- `eligible_planned_runs` — planned cells the current host can execute;
+- `skipped_runs` — cells excluded before agent execution because frozen resource requirements were not satisfied;
+- `orchestration_errors` — eligible cells where AgentBench could not complete orchestration;
+- `benchmark_runs` — cells that produced a canonical benchmark run.
 
-A separate benchmark-success interval is also available over produced
-`BenchmarkRun` rows.
+The agent success denominator is **eligible planned runs**. A host limitation therefore cannot make an agent appear less reliable. An orchestration error on an eligible cell remains in the denominator and does not silently disappear.
+
+A separate benchmark-success interval is available over produced `BenchmarkRun` rows.
+
+Wilson intervals were chosen because they remain well behaved for small samples and success rates near zero or one.
 
 ## Numeric measurements
 
-Runtime, measured token counts, and code-change counts expose descriptive
-summaries. When at least two values exist, AgentBench reports:
-
-- sample mean
-- median
-- minimum and maximum
-- sample standard deviation
-- two-sided 95% Student-t interval for the sample mean
-
-For larger degrees of freedom the implementation uses standard tabulated
-approximations approaching the normal critical value.
+Runtime, measured token counts, and code-change counts expose descriptive summaries. With at least two values AgentBench reports sample mean, median, minimum/maximum, sample standard deviation, and a two-sided 95% Student-t interval for the sample mean.
 
 No SciPy dependency is required.
 
 ## Leaderboard methodology
 
-The default ranking is intentionally conservative.
-
-Sort order:
+The default ranking is conservative. Sort order is:
 
 1. lower bound of the 95% Wilson success interval
 2. observed success rate
@@ -45,55 +36,26 @@ Sort order:
 4. lower median runtime
 5. stable agent name/ID
 
-The lower Wilson bound is called the **reliability score** in reports.
-
-Example intuition:
-
-- Agent A: 1 success in 1 trial → observed 100%, very wide uncertainty
-- Agent B: 8 successes in 10 trials → observed 80%, much more evidence
-
-Agent B can outrank Agent A because its conservative lower bound is stronger.
-
-This avoids rewarding tiny samples simply for being tiny.
+The lower Wilson bound is the **reliability score**.
 
 ## Pairwise task comparison
 
-For every pair of agents, AgentBench compares observed success rate on each task.
+For every pair of agents, AgentBench compares observed success rate on each task. Higher task success rate is a win, lower is a loss, and equal is a tie. Runtime does not break equal-quality outcomes.
 
-- higher task success rate → task win
-- lower task success rate → task loss
-- equal task success rate → tie
-
-Runtime is **not** used to turn equal-quality task outcomes into wins.
-
-The table is descriptive. It is not a paired hypothesis test.
+V3+ also reports mean paired success-rate difference and an exact two-sided sign-test p-value over decisive tasks. These are descriptive; the sign test does not alter rank and AgentBench does not claim task/trial independence.
 
 ## Token coverage
 
-Token telemetry is optional because generic shell agents do not share a universal
-usage format.
-
-When structured usage is available, AgentBench reports token summaries and a
-coverage rate:
+Token telemetry is optional because generic shell agents do not share one usage format. Coverage is:
 
 ```text
 runs with measured total tokens / benchmark runs
 ```
 
-Missing usage is not treated as zero.
+Missing usage is unknown, not zero.
 
 ## Interpretation limits
 
-AgentBench does not currently claim:
+AgentBench does not claim repeated trials are statistically independent, rank differences are universally significant, its built-in corpus estimates universal coding ability, or runtime/token comparisons are fair across uncontrolled hardware/toolchains.
 
-- repeated trials are statistically independent
-- rank differences are statistically significant
-- the built-in four-task corpus estimates universal coding ability
-- token or runtime comparisons are fair across different hardware/tool configs
-  unless the experiment is controlled accordingly
-
-The reproducibility lock helps make those controls visible; it does not make
-experimental assumptions true.
-
-Future work can add paired tests, bootstrap comparisons, and larger task corpora
-where their assumptions are defensible.
+V4 resource eligibility prevents one specific confound—executing tasks on hosts that cannot satisfy declared requirements—but does not make all experimental assumptions true.

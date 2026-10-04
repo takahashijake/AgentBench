@@ -386,3 +386,65 @@ def test_resource_incompatible_trial_is_skipped_without_penalizing_agent(
     assert summary["overall"]["skipped_runs"] == 1
     assert summary["overall"]["success_rate"] is None
     assert summary["overall"]["orchestration_errors"] == 0
+
+
+class SelectiveResourceInspector:
+    def evaluate(self, requirements):
+        if requirements.min_cpu_count >= 8:
+            return ResourceEligibility(
+                eligible=False,
+                reasons=("fixture high-resource task is incompatible",),
+                observed={"platform": "fixture", "cpu_count": 4},
+            )
+        return ResourceEligibility(
+            eligible=True,
+            reasons=(),
+            observed={"platform": "fixture", "cpu_count": 4},
+        )
+
+
+def test_skipped_trials_are_excluded_from_success_rate_denominator(tmp_path: Path):
+    repo = tmp_path / "target-mixed-resource"
+    base_commit = init_git_repo(repo)
+    db = make_session()
+
+    agent = add_agent(db, "mixed-resource-agent", "pass")
+    eligible_task = add_task(
+        db,
+        name="eligible-task",
+        repo=repo,
+        base_commit=base_commit,
+    )
+    skipped_task = add_task(
+        db,
+        name="skipped-task",
+        repo=repo,
+        base_commit=base_commit,
+    )
+    service = ExperimentService(
+        db,
+        artifact_root=tmp_path / "artifacts",
+        resource_inspector=SelectiveResourceInspector(),
+    )
+    experiment = service.create_experiment(
+        name="mixed-resource-denominator",
+        task_ids=[eligible_task.id, skipped_task.id],
+        agent_config_ids=[agent.id],
+        task_requirements={
+            eligible_task.id: {"min_cpu_count": 1},
+            skipped_task.id: {"min_cpu_count": 8},
+        },
+    )
+
+    completed = service.execute_experiment(experiment.id)
+    summary = service.aggregate_experiment(experiment.id)
+
+    assert completed.status == "completed"
+    assert [trial.status for trial in completed.trials] == ["completed", "skipped"]
+    assert db.query(BenchmarkRun).count() == 1
+    assert summary["overall"]["planned_runs"] == 2
+    assert summary["overall"]["eligible_planned_runs"] == 1
+    assert summary["overall"]["skipped_runs"] == 1
+    assert summary["overall"]["successful_runs"] == 1
+    assert summary["overall"]["success_rate"] == 1.0
+    assert summary["overall"]["completion_rate"] == 1.0

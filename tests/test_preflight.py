@@ -66,3 +66,28 @@ def test_suite_preflight_cli_returns_machine_readable_status(tmp_path: Path, cap
     payload = json.loads(capsys.readouterr().out)
     assert payload["ready"] is True
     assert payload["suite_id"] == "agentbench-smoke-v2"
+
+
+def test_suite_preflight_reports_missing_task_repository(tmp_path: Path):
+    command = f'"{sys.executable}" -c "print(1)" {{prompt}}'
+    result = materialize_pack(
+        "smoke-v2",
+        tmp_path / "missing-repo",
+        agents=[_agent(command)],
+        repetitions=1,
+    )
+    loaded = load_suite_manifest(result["manifest_path"])
+    first_repo = loaded.resolve_repository_path(loaded.manifest.tasks[0])
+    for candidate in sorted(first_repo.rglob("*"), reverse=True):
+        if candidate.is_file() or candidate.is_symlink():
+            candidate.unlink()
+        elif candidate.is_dir():
+            candidate.rmdir()
+    first_repo.rmdir()
+
+    payload = preflight_suite(loaded)
+
+    assert payload["ready"] is False
+    failed = next(row for row in payload["tasks"] if row["id"] == loaded.manifest.tasks[0].id)
+    assert failed["ready"] is False
+    assert "repository readiness failed" in failed["reasons"][0]

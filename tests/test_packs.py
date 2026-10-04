@@ -93,7 +93,7 @@ def test_pack_materialization_is_deterministic_and_manifest_is_v3(tmp_path: Path
         assert status == ""
 
 
-def test_pack_fixtures_begin_unsolved(tmp_path: Path):
+def test_smoke_pack_fixtures_begin_unsolved(tmp_path: Path):
     result = materialize_pack(
         "smoke-v2",
         tmp_path / "pack",
@@ -282,3 +282,27 @@ def test_pack_preflight_cli_is_machine_readable(capsys):
     assert payload["pack_id"] == "engineering-v4"
     assert payload["eligible"] is True
     assert payload["task_count"] == 12
+
+
+def test_engineering_v4_fixtures_begin_unsolved(tmp_path: Path):
+    result = materialize_pack(
+        "engineering-v4",
+        tmp_path / "engineering-unsolved",
+        agents=[AGENT],
+        repetitions=1,
+    )
+    loaded = load_suite_manifest(result["manifest_path"])
+
+    returncodes = {}
+    for task in loaded.manifest.tasks:
+        completed = subprocess.run(
+            ["python", "-m", "unittest", "-q"],
+            cwd=loaded.resolve_repository_path(task),
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        returncodes[task.id] = completed.returncode
+
+    assert len(returncodes) == 12
+    assert all(code != 0 for code in returncodes.values())
