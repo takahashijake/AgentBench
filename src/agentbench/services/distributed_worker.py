@@ -19,7 +19,6 @@ from ..models.database import (
     ExperimentWorkerAttempt,
 )
 from ..timeutils import utc_now
-from .benchmark import BenchmarkService
 from .experiment import ExperimentBusyError, ExperimentService, TrialExecutionOutcome
 
 
@@ -110,7 +109,18 @@ class DistributedWorkerService:
                     .all()
                 )
             }
-            if not active_modes or active_modes - {"distributed_worker"}:
+            active_worker_claims = (
+                self.db.query(ExperimentWorkerAttempt)
+                .filter(
+                    ExperimentWorkerAttempt.experiment_id == experiment.id,
+                    ExperimentWorkerAttempt.status == "active",
+                )
+                .count()
+            )
+            if (
+                active_modes - {"distributed_worker"}
+                or (not active_modes and active_worker_claims == 0)
+            ):
                 raise ExperimentBusyError(
                     f"Experiment {experiment.id} is owned by a non-distributed "
                     "execution"
@@ -240,6 +250,19 @@ class DistributedWorkerService:
             finally:
                 db.close()
 
+    def _claim_is_active(self, claim: WorkerClaim) -> bool:
+        return (
+            self.db.query(ExperimentWorkerAttempt.id)
+            .filter(
+                ExperimentWorkerAttempt.id == claim.attempt_id,
+                ExperimentWorkerAttempt.lease_token == claim.lease_token,
+                ExperimentWorkerAttempt.owner_id == claim.owner_id,
+                ExperimentWorkerAttempt.status == "active",
+            )
+            .count()
+            == 1
+        )
+
     def _finish_claim(
         self,
         claim: WorkerClaim,
@@ -252,9 +275,12 @@ class DistributedWorkerService:
                 ExperimentWorkerAttempt.id == claim.attempt_id,
                 ExperimentWorkerAttempt.lease_token == claim.lease_token,
                 ExperimentWorkerAttempt.owner_id == claim.owner_id,
+                ExperimentWorkerAttempt.status == "active",
             )
-            .one()
+            .one_or_none()
         )
+        if attempt is None or outcome.status == "lease_lost":
+            return
         attempt.status = outcome.status
         attempt.completed_at = now
         attempt.heartbeat_at = now
@@ -303,7 +329,10 @@ class DistributedWorkerService:
         )
         heartbeat.start()
         try:
-            outcome = self.experiments.execute_claimed_trial(claim.trial_id)
+            outcome = self.experiments.execute_claimed_trial(
+                claim.trial_id,
+                ownership_check=lambda: self._claim_is_active(claim),
+            )
         finally:
             stop.set()
             heartbeat.join(timeout=max(1.0, claim.lease_seconds / 3 + 1))
@@ -351,7 +380,12 @@ class DistributedWorkerService:
             )
             raise
 
-        status = "failed" if any(item.status == "error" for item in outcomes) else "completed"
+        if any(item.status == "lease_lost" for item in outcomes):
+            status = "interrupted"
+        elif any(item.status == "error" for item in outcomes):
+            status = "failed"
+        else:
+            status = "completed"
         self.experiments._finish_execution_attempt(
             int(execution.id),
             status=status,

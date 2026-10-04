@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 from sqlalchemy.orm import Session
 
@@ -298,8 +298,18 @@ class ExperimentService:
             )
         return self.execute_claimed_trial(int(trial.id))
 
-    def execute_claimed_trial(self, trial_id: int) -> TrialExecutionOutcome:
-        """Execute a trial that already has durable running ownership."""
+    def execute_claimed_trial(
+        self,
+        trial_id: int,
+        *,
+        ownership_check: Callable[[], bool] | None = None,
+    ) -> TrialExecutionOutcome:
+        """Execute a trial that already has durable running ownership.
+
+        Distributed workers may provide a fencing callback. If ownership is lost
+        before terminal trial mutation, the stale worker's result is not attached
+        to the recovered trial.
+        """
 
         trial = (
             self.db.query(ExperimentTrial)
@@ -315,6 +325,14 @@ class ExperimentService:
             )
 
         experiment = self.get_experiment(int(trial.experiment_id))
+        if ownership_check is not None and not ownership_check():
+            return TrialExecutionOutcome(
+                trial_id=int(trial.id),
+                status="lease_lost",
+                error="Durable worker lease is no longer active",
+            )
+
+        detached_run_id: int | None = None
         try:
             task_snapshots = self._snapshots_by_id(list(experiment.task_snapshots))
             requirements = TaskRequirements.from_mapping(
@@ -322,6 +340,13 @@ class ExperimentService:
             )
             eligibility = self.resource_inspector.evaluate(requirements)
             if not eligibility.eligible:
+                if ownership_check is not None and not ownership_check():
+                    self.db.rollback()
+                    return TrialExecutionOutcome(
+                        trial_id=int(trial.id),
+                        status="lease_lost",
+                        error="Durable worker lease was lost before skip finalization",
+                    )
                 trial.status = "skipped"
                 trial.error = "Resource requirements not satisfied: " + "; ".join(
                     eligibility.reasons
@@ -342,9 +367,29 @@ class ExperimentService:
                     task,
                     agent_config_id=trial.agent_config_id,
                 )
+                detached_run_id = int(run.id)
+                if ownership_check is not None and not ownership_check():
+                    self.db.rollback()
+                    return TrialExecutionOutcome(
+                        trial_id=int(trial.id),
+                        status="lease_lost",
+                        benchmark_run_id=detached_run_id,
+                        error=(
+                            "Durable worker lease was lost before benchmark "
+                            "finalization"
+                        ),
+                    )
                 trial.benchmark_run_id = run.id
                 trial.status = "completed"
         except Exception as exc:
+            if ownership_check is not None and not ownership_check():
+                self.db.rollback()
+                return TrialExecutionOutcome(
+                    trial_id=int(trial.id),
+                    status="lease_lost",
+                    benchmark_run_id=detached_run_id,
+                    error="Durable worker lease was lost during failed execution",
+                )
             trial.status = "error"
             trial.error = f"{type(exc).__name__}: {exc}"
         finally:
