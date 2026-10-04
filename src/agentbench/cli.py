@@ -34,6 +34,12 @@ from .provenance import (
     verify_suite_lock,
     write_suite_lock,
 )
+from .regression import (
+    RegressionComparisonError,
+    RegressionPolicy,
+    compare_bundles,
+    gate_bundles,
+)
 from .reporting import render_leaderboard_markdown, render_markdown_report
 from .result_bundles import (
     BundleValidationError,
@@ -411,6 +417,38 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Verify publication identity and every declared static payload.",
     )
     publish_verify_parser.add_argument("publication")
+
+    regression = subparsers.add_parser(
+        "regression",
+        help="Compare verified bundles and enforce evaluation regression policies.",
+    )
+    regression_subparsers = regression.add_subparsers(
+        dest="regression_command",
+        required=True,
+    )
+    regression_compare = regression_subparsers.add_parser(
+        "compare",
+        help="Compare compatible baseline and candidate result bundles.",
+    )
+    regression_compare.add_argument("baseline")
+    regression_compare.add_argument("candidate")
+    regression_compare.add_argument("--output", "-o")
+
+    regression_gate = regression_subparsers.add_parser(
+        "gate",
+        help="Evaluate candidate bundle metrics against allowed regression thresholds.",
+    )
+    regression_gate.add_argument("baseline")
+    regression_gate.add_argument("candidate")
+    regression_gate.add_argument("--output", "-o")
+    regression_gate.add_argument("--max-success-drop", type=float, default=0.0)
+    regression_gate.add_argument("--max-reliability-drop", type=float, default=0.0)
+    regression_gate.add_argument(
+        "--max-error-rate-increase",
+        type=float,
+        default=0.0,
+    )
+    regression_gate.add_argument("--max-runtime-increase-ratio", type=float)
     return parser
 
 
@@ -722,6 +760,31 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             _write_json(response)
             return 0 if verification["valid"] else 3
 
+        if args.command == "regression":
+            if args.regression_command == "compare":
+                _write_json(
+                    compare_bundles(args.baseline, args.candidate),
+                    args.output,
+                )
+                return 0
+            if args.regression_command == "gate":
+                result = gate_bundles(
+                    args.baseline,
+                    args.candidate,
+                    policy=RegressionPolicy(
+                        max_success_rate_drop=args.max_success_drop,
+                        max_reliability_drop=args.max_reliability_drop,
+                        max_orchestration_error_rate_increase=(
+                            args.max_error_rate_increase
+                        ),
+                        max_median_runtime_increase_ratio=(
+                            args.max_runtime_increase_ratio
+                        ),
+                    ),
+                )
+                _write_json(result, args.output)
+                return 0 if result["passed"] else 4
+
         if args.command == "publish":
             if args.publish_command == "bundle":
                 _write_json(publish_bundle(args.bundle, args.output))
@@ -770,6 +833,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         ExperimentNotFoundError,
         BundleValidationError,
         PublicationValidationError,
+        RegressionComparisonError,
     ) as exc:
         print(
             json.dumps(
