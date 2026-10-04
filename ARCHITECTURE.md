@@ -1,219 +1,230 @@
-# AgentBench Architecture
+# AgentBench V2 Architecture
 
-AgentBench V1 is structured around one principle: **comparison is only useful when
-execution integrity and reproducibility are first-class constraints**.
+AgentBench is organized around one invariant:
 
-The layers below are intentionally narrow. New features should compose these
-layers instead of bypassing them.
+> **A ranking is only as credible as the corpus identity, execution evidence, and
+> measurement semantics underneath it.**
 
-## Product flow
+V2 therefore adds corpus and statistical layers **above** the hardened V1
+execution core rather than replacing that core.
+
+## End-to-end product flow
 
 ```text
-Versioned suite manifest
-        │
-        ├── validate
-        │
-        ├── resolve provenance ──► suite.lock.json
-        │                           │
-        │                           └── verify / replay gate
-        ▼
-    SuiteService
-        ▼
-  ExperimentService
-        ▼
-   BenchmarkService
-        ▼
- isolated worktree
-        ▼
-      agent
-        ▼
- pre-test evidence
-        ▼
-      tests
-        ▼
- persisted BenchmarkRun + immutable artifacts
-        ▼
- comparison aggregation
-        ▼
- JSON / Markdown report
+Built-in pack / custom suite
+          │
+          ├── materialize deterministic Git fixtures
+          ▼
+   schema-v1/v2 manifest
+          │
+          ├── canonical manifest hash
+          ├── provenance resolution
+          ▼
+      suite lock ───────────────► verify / replay gate
+          │
+          ▼
+      SuiteService
+          ▼
+   ExperimentService
+          │
+          ├── tasks × agents × repetitions
+          ├── frozen definitions
+          ▼
+    BenchmarkService
+          │
+          ├── detached worktree
+          ├── bounded setup
+          ├── bounded agent
+          ├── pre-test Git evidence
+          ├── bounded tests
+          └── immutable run bundle
+          ▼
+    BenchmarkRun rows
+          │
+          ▼
+     statistics.py
+          │
+          ├── Wilson success intervals
+          ├── Student-t numeric summaries
+          ├── conservative ranking
+          └── pairwise task outcomes
+          ▼
+ JSON / Markdown / API / local UI
 ```
 
-## 1. Manifest layer
+## 1. Benchmark corpus
+
+**Path:** `src/agentbench/packs.py`
+
+Owns:
+
+- built-in pack catalog
+- task fixture source definitions
+- deterministic Git materialization
+- generated schema-v2 suite manifests
+- pack-specific corpus metadata
+- CLI agent-definition parsing
+
+It does not execute agents or write database rows.
+
+The current built-in packs are:
+
+- `smoke-v2`
+- `core-v2`
+
+Task repositories are committed with fixed content, identity, timestamps, and
+message so corpus commits can be reproduced across workspaces.
+
+## 2. Manifest layer
 
 **Path:** `src/agentbench/manifests.py`
 
 Owns:
 
-- schema-versioned YAML/JSON loading
-- deterministic validation
-- task/agent resource IDs
-- experiment selections
+- schema-v1/v2 YAML/JSON validation
+- corpus metadata
+- task category/difficulty/tags
+- task/agent selection
 - relative repository-path resolution
 - canonical manifest SHA-256
 
-It does not touch the database or execute processes.
+It does not touch persistence or execute processes.
 
-## 2. Provenance and replay layer
+## 3. Provenance and replay
 
 **Path:** `src/agentbench/provenance.py`
 
 Owns bounded reproducibility identity:
 
+- suite schema and manifest digest
+- benchmark-pack identity
 - exact resolved task commits
-- task prompt digest
-- setup/test commands and timeout
-- selected matrix/repetition policy
+- prompt digests
+- execution commands/timeouts
+- task corpus metadata
+- selected matrix/repetitions
 - agent command template
-- resolved executable name
-- executable version output when available
-- executable binary SHA-256
-- AgentBench version
-- Python implementation/version
-- OS release/machine architecture
-- Git version
-- canonical lock identity SHA-256
+- resolved executable/version/binary SHA-256
+- AgentBench/Python/platform/Git identity
 
-The lock intentionally excludes environment-variable dumps, credentials, and
-other high-volume or secret state.
+The lock excludes secrets and indiscriminate environment snapshots.
 
-`verify_suite_lock` compares a fresh resolution against a saved lock. A replay
-must fail closed when material drift is detected.
+Replay fails closed on material drift.
 
-## 3. Suite workflow layer
+## 4. Suite workflow
 
 **Path:** `src/agentbench/services/suite.py`
 
 Owns:
 
-- stable imported identities using `<suite-id>/<resource-id>`
-- idempotent task/agent upserts
-- manifest selection → database ID translation
+- stable resource identities
+- idempotent task/agent imports
+- manifest-to-database binding
 - experiment creation through `ExperimentService`
 - suite execution composition
-- machine-readable report envelope construction
+- schema-v2 report envelope construction
 
-It must never create `BenchmarkRun` rows directly.
+It does not bypass the experiment or benchmark service.
 
-## 4. Experiment orchestration
+## 5. Experiment orchestration
 
 **Path:** `src/agentbench/services/experiment.py`
 
 Owns:
 
-- deterministic `tasks × agents × repetitions` matrices
+- deterministic `tasks × agents × repetitions` planning
 - persisted `ExperimentTrial` cells
 - frozen task/agent snapshots
 - definition-drift rejection
-- trial state transitions
-- orchestration-error handling
-- idempotence for terminal trials
-- overall/per-agent/per-task/per-cell aggregation
-- delegation of each trial to `BenchmarkService`
+- idempotent terminal states
+- orchestration-error separation
+- persisted-data aggregation
+- delegation of one cell to `BenchmarkService`
 
-A benchmark failure is data. An orchestration failure means AgentBench could not
-produce the benchmark measurement.
+V2 aggregation additionally feeds observed measurements into the statistics
+layer.
 
-## 5. Benchmark orchestration
+## 6. Statistical analysis
+
+**Path:** `src/agentbench/statistics.py`
+
+Owns presentation-independent analysis:
+
+- 95% Wilson score intervals for binomial success
+- numeric measurement summaries
+- Student-t mean intervals
+- conservative agent ranking
+- pairwise task comparison
+
+The ranking algorithm is deterministic and self-described in result data.
+
+It does not execute benchmarks or mutate persisted measurements.
+
+## 7. Benchmark execution
 
 **Path:** `src/agentbench/services/benchmark.py`
 
-Owns exactly one benchmark lifecycle:
+Owns exactly one trial lifecycle:
 
 1. validate task/agent state
 2. verify source repository
-3. allocate a unique write-once artifact directory
-4. capture bounded run provenance
-5. create a detached worktree at the requested commit
-6. run optional bounded setup
-7. run the coding agent
-8. capture Git evidence **before tests**
-9. run bounded tests
-10. force-clean the worktree
+3. allocate write-once artifact storage
+4. capture bounded provenance
+5. create detached worktree at the exact task commit
+6. execute optional bounded setup
+7. execute the coding agent
+8. capture Git evidence before tests
+9. execute bounded tests
+10. force-clean worktree
 11. persist one `BenchmarkRun`
 
-No other layer should reimplement this lifecycle.
+V2 also persists structured token usage emitted by the adapter.
 
-## 6. Agent adapters
+## 8. Agent adapters
 
-**Path:** `src/agentbench/adapters/`
+**Paths:** `src/agentbench/adapters/`
 
-Adapters translate a common prompt into a concrete agent invocation.
+The current shell adapter:
 
-The current `ShellAgentAdapter`:
+- parses command templates with `shlex`
+- inserts prompts as argv values
+- delegates lifecycle to bounded process execution
+- records process metadata
+- detects common agent families
+- invokes structured usage extraction
 
-- parses `command_template` using `shlex.split`
-- substitutes `{prompt}` as an argv value
-- does not shell-interpolate the prompt
-- delegates process lifecycle to the execution layer
-- exposes execution metadata to the benchmark result
+Future native adapters belong here.
 
-Future native Codex/Qwen/Claude/Gemini/API adapters belong here.
+## 9. Structured usage
 
-## 7. Process execution
+**Path:** `src/agentbench/usage.py`
 
-**Path:** `src/agentbench/execution/`
+Owns conservative telemetry extraction from complete JSON/JSONL output events.
 
-Owns:
+Recognized semantics include input/prompt tokens, output/completion tokens, total
+tokens, cached input, and reported USD cost.
 
-- subprocess creation
-- stdout/stderr capture
-- wall-clock timeouts
-- process-group/tree termination
-- explicit trusted-shell execution for setup/test commands
+Arbitrary prose numbers are ignored.
 
-The agent prompt path is argv-based; setup/test commands are user-authored trusted
-benchmark configuration.
+## 10. Execution, Git, evidence, artifacts
 
-## 8. Git workspace lifecycle
+**Paths:**
 
-**Path:** `src/agentbench/utils/git.py`
+- `src/agentbench/execution/`
+- `src/agentbench/utils/git.py`
+- `src/agentbench/evidence.py`
+- `src/agentbench/artifacts.py`
 
-Owns:
+These V1 layers remain intentionally stable.
 
-- Git repository recognition
-- commit resolution
-- detached temporary worktree creation
-- forced dirty-worktree removal
-- stale worktree metadata pruning
-- basic Git helpers
-
-A benchmark worktree is disposable. Anything needed after cleanup must already
-be persisted.
-
-## 9. Evidence capture
-
-**Path:** `src/agentbench/evidence.py`
-
-Evidence is captured immediately after the agent exits and before test execution.
-
-It preserves:
-
-- HEAD
-- status
-- tracked binary diff
-- numstat
-- commits produced by the agent
-- non-ignored untracked file copies/hashes
-- aggregate change metrics
-
-This ordering is an integrity invariant: test commands are allowed to modify the
-worktree, but those modifications must not become agent evidence.
-
-## 10. Artifact storage
-
-**Path:** `src/agentbench/artifacts.py`
-
-Each benchmark receives a unique write-once directory, outside the target
-repository by default.
-
-Artifact writes use exclusive creation so a later phase cannot silently overwrite
-earlier evidence.
+They own process groups/timeouts, worktree lifecycle, pre-test evidence capture,
+untracked-file preservation, and immutable run storage.
 
 ## 11. Persistence
 
 **Paths:** `src/agentbench/models/`, `src/agentbench/schemas/`
 
-Core entities:
+Core entities remain:
 
 ```text
 AgentConfig
@@ -223,41 +234,54 @@ Experiment
 ExperimentTrial
 ```
 
-`ExperimentTrial.benchmark_run_id` links matrix planning to the canonical
-single-run result without polluting `BenchmarkRun` with experiment-only semantics.
+Token columns on `BenchmarkRun` now receive structured measurements when
+available.
+
+Statistical summaries are derived from canonical persisted trials/runs and are
+not stored as competing source-of-truth rows.
 
 ## 12. Reporting
 
 **Path:** `src/agentbench/reporting.py`
 
-Reporting is presentation-only. It receives persisted aggregate data and emits a
-reviewer-friendly Markdown representation.
+Owns Markdown presentation only.
 
-It must not calculate new benchmark semantics or change stored results.
+V2 reports display:
 
-## 13. API / dashboard
+- corpus identity
+- success uncertainty
+- runtime/token measurements
+- reliability leaderboard
+- pairwise task outcomes
+- methodology and interpretation limits
+- reproducibility identity
+
+## 13. API / local UI
 
 **Path:** `src/agentbench/api/`
 
-The FastAPI surface is transport and local inspection only:
+The local application exposes:
 
-- HTTP validation
-- ORM loading
-- service invocation
-- persisted run/experiment retrieval
-- local HTML dashboard
+- run-level evidence
+- experiment lists
+- experiment leaderboard views
+- built-in pack metadata
+- JSON experiment results
+- JSON leaderboard results
+- OpenAPI documentation
 
-The API does not own benchmark logic.
+It does not implement benchmark semantics independently.
 
 ## 14. CLI
 
 **Path:** `src/agentbench/cli.py`
 
-The installed `agentbench` command composes the layers above.
-
-Product commands:
+V2 product commands:
 
 ```text
+pack list
+pack show
+pack materialize
 validate
 doctor
 serve
@@ -267,46 +291,53 @@ import
 run
 replay
 results
+leaderboard
 ```
 
 ## Integrity invariants
 
-A change is incomplete unless all of these remain true:
+V2 is incomplete if any of these fail:
 
-1. Source repositories are unchanged by benchmark execution.
+1. Source repositories remain unchanged by benchmark execution.
 2. Agents execute only in isolated worktrees.
 3. Worktrees resolve to the intended base commit.
 4. Tests cannot overwrite captured agent evidence.
 5. Non-ignored untracked agent files survive cleanup.
-6. Setup/agent/test processes are bounded.
-7. Timed-out processes do not leave the normal child process tree running.
-8. Artifact directories are unique and write-once.
+6. Setup/agent/test processes remain bounded.
+7. Timeout cleanup terminates the normal child process tree.
+8. Artifact directories remain unique and write-once.
 9. Dirty worktrees are removed and stale registrations are pruned.
-10. Experiment execution calls `BenchmarkService`.
-11. Benchmark failure remains a measurement rather than an orchestration error.
-12. Terminal experiment trials are not silently rerun.
-13. Historical aggregation uses frozen snapshots.
+10. Experiment execution still calls `BenchmarkService`.
+11. Benchmark failure remains data, not an orchestration error.
+12. Terminal trials are not silently rerun.
+13. Historical aggregation uses frozen definitions.
 14. Definition drift is rejected before trial execution.
-15. Parallel duplicate execution is blocked by running-trial state.
-16. Suite imports are stable/idempotent.
-17. Lock identity is canonical and tamper-evident.
-18. Replay detects changed manifest, commit, executable, or bounded environment identity.
+15. Parallel duplicate execution is blocked.
+16. Suite imports remain stable/idempotent.
+17. Lock identity remains canonical and tamper-evident.
+18. Replay detects changed manifest/commit/executable/bounded environment.
 19. Every new run persists bounded provenance.
-20. Reporting remains presentation-only.
+20. Pack task commits are deterministic for a given pack version.
+21. Missing token telemetry is not counted as zero.
+22. Statistical analysis derives only from canonical observed trial data.
+23. Ranking rules are deterministic and disclosed.
+24. Pairwise quality ties remain ties.
+25. Reporting remains presentation-only.
 
-## V1 completion boundary
+## V2 completion boundary
 
-V1 is complete when:
+V2 is a release when:
 
-- the package installs cleanly
-- the CLI smoke-tests after installation
-- suite lock/verify/replay is covered
-- benchmark provenance is persisted
-- JSON and Markdown reports are available
-- the local UI loads from packaged templates
-- the complete QA suite passes on supported Python versions
+- package version is 2.0.0
+- built-in packs materialize deterministically
+- schema-v1 and schema-v2 manifests both validate
+- pack metadata participates in provenance
+- repeated-trial summaries expose uncertainty
+- leaderboard and pairwise results are available through CLI/API/UI
+- structured usage can populate canonical token columns
+- Markdown reports explain methodology and limitations
+- CI exercises pack → validate → lock → verify
+- full QA passes on supported Python versions
 
-Post-V1 work should expand **benchmark depth and analysis**, not weaken these
-integrity boundaries. High-value next areas are curated benchmark packs, native
-agent metadata/token accounting, statistical confidence across repetitions, and
-richer comparison/ranking reports.
+Post-V2 development should expand corpus scale and comparison sophistication
+without weakening these invariants.
