@@ -1,4 +1,4 @@
-# AgentBench V9 Architecture
+# AgentBench V10 Architecture
 
 AgentBench V4 is organized around two invariants:
 
@@ -597,3 +597,39 @@ are aligned by logical agent name.
 A gate failure is returned as measured policy data. The CLI maps that outcome to
 exit code 4 rather than throwing an exception; malformed/incompatible evidence
 remains an input error.
+
+
+## V10 campaign orchestration boundary
+
+**Paths:** `src/agentbench/campaigns.py` and
+`src/agentbench/services/campaign.py`.
+
+Campaign definitions point to suite manifests and suite locks; they do not
+duplicate task or agent definitions.
+
+```text
+campaign manifest
+      |
+      v
+verify every suite + lock
+      |
+      v
+persist campaign
+      |
+      +-- member 1 -> SuiteService -> Experiment
+      +-- member 2 -> SuiteService -> Experiment
+      +-- member N -> SuiteService -> Experiment
+      |
+      v
+sum canonical counts -> Wilson reliability -> campaign ranking
+```
+
+The critical boundary is before persistence: all member locks are verified first.
+A drifted later member therefore cannot create a half-started campaign.
+
+Campaign aggregation uses each suite report's resource mapping to recover logical
+agent IDs. It pools integer counts and recomputes rates/intervals instead of
+averaging already-aggregated percentages.
+
+Campaign report schema is versioned independently from suite, analysis, bundle,
+publication, and regression schemas.

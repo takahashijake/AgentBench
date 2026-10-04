@@ -1,5 +1,31 @@
 # Changelog
 
+## 10.0.0 — Reproducible Benchmark Campaigns
+
+### Campaign manifests
+- added versioned campaign manifests for ordered collections of locked suites
+- all member locks verify before campaign persistence or benchmark execution
+- duplicate member IDs and unsupported campaign schemas are rejected
+
+### Persistent orchestration
+- persist campaign definition, manifest identity, lifecycle status, and timestamps
+- persist every member suite/lock identity, experiment ID, status, error, and report
+- campaign reports can be re-exported by persisted campaign ID
+
+### Cross-suite analysis
+- aggregate logical agents across member suites by suite agent resource ID
+- sum canonical eligible/success/benchmark/skipped/orchestration counts
+- recompute success rates and Wilson reliability from pooled counts
+- deterministic cross-suite ranking without averaging percentages
+
+### Product surface
+- `agentbench campaign validate <campaign.yaml>`
+- `agentbench campaign run <campaign.yaml>`
+- `agentbench campaign report <campaign-id>`
+- campaign report schema 1 plus Markdown rendering
+- AgentBench package/API version 10.0.0
+
+
 ## 9.0.0 — Continuous-evaluation Regression Gates
 
 ### Comparison

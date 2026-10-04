@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentbench-local"
-version = "9.0.0"
+version = "10.0.0"
 description = "Extensible, reproducible evaluation platform for coding agents"
 readme = "README.md"
 requires-python = ">=3.11"
