@@ -28,6 +28,16 @@ class ManifestAgent(BaseModel):
     enabled: bool = True
 
 
+class ManifestBenchmarkPack(BaseModel):
+    """Optional provenance for a curated benchmark corpus."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(..., min_length=1, max_length=128, pattern=_RESOURCE_ID_PATTERN)
+    version: str = Field(..., min_length=1, max_length=64)
+    description: Optional[str] = None
+
+
 class ManifestTask(BaseModel):
     """One benchmark task definition in a suite manifest."""
 
@@ -47,6 +57,9 @@ class ManifestTask(BaseModel):
     test_command: str = Field(default="pytest")
     timeout: int = Field(default=300, ge=1, le=3600)
     enabled: bool = True
+    category: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    difficulty: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    tags: list[str] = Field(default_factory=list)
 
 
 class ManifestExperiment(BaseModel):
@@ -71,13 +84,14 @@ class SuiteManifest(BaseModel):
     id: str = Field(..., min_length=1, max_length=128, pattern=_RESOURCE_ID_PATTERN)
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = None
+    benchmark_pack: Optional[ManifestBenchmarkPack] = None
     agents: list[ManifestAgent] = Field(..., min_length=1)
     tasks: list[ManifestTask] = Field(..., min_length=1)
     experiment: ManifestExperiment = Field(default_factory=ManifestExperiment)
 
     @model_validator(mode="after")
     def validate_manifest(self) -> "SuiteManifest":
-        if self.schema_version != 1:
+        if self.schema_version not in {1, 2}:
             raise ValueError(
                 f"Unsupported suite manifest schema_version: {self.schema_version}"
             )
@@ -200,6 +214,7 @@ def load_suite_manifest(path: str | Path) -> LoadedSuiteManifest:
 __all__ = [
     "LoadedSuiteManifest",
     "ManifestAgent",
+    "ManifestBenchmarkPack",
     "ManifestExperiment",
     "ManifestTask",
     "SuiteManifest",
