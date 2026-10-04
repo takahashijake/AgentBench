@@ -15,6 +15,7 @@ from ..timeutils import utc_now
 from .benchmark import BenchmarkService
 from .experiment import ExperimentBusyError, ExperimentService, TrialExecutionOutcome
 
+
 class LocalParallelExperimentExecutor:
     """Execute independent experiment cells without sharing ORM sessions."""
 
