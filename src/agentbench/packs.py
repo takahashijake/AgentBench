@@ -14,6 +14,7 @@ from typing import Any, Iterable
 from .benchmark_packs import (
     BenchmarkPack,
     BuiltinPackProvider,
+    compare_resolved_packs,
     CORE_V2,
     CORE_V3,
     PackMaterializer,
@@ -46,6 +47,18 @@ def get_pack(pack_id: str, registry: PackRegistry | None = None) -> BenchmarkPac
     return (registry or default_pack_registry()).get(pack_id).pack
 
 
+def compare_packs(
+    left_pack_id: str,
+    right_pack_id: str,
+    registry: PackRegistry | None = None,
+) -> dict[str, Any]:
+    active = registry or default_pack_registry()
+    return compare_resolved_packs(
+        active.get(left_pack_id),
+        active.get(right_pack_id),
+    )
+
+
 def materialize_pack(
     pack_id: str,
     output_dir: str | Path,
@@ -71,6 +84,7 @@ __all__ = [
     "PackRegistry",
     "PackTaskSpec",
     "SMOKE_V2",
+    "compare_packs",
     "create_pack_registry",
     "default_pack_registry",
     "get_pack",
