@@ -69,9 +69,10 @@ def test_full_benchmark_isolated_preserves_agent_file_and_cleans_worktree(tmp_pa
         setup_timeout=2,
         test_timeout=2,
     )
-    run = service.execute_benchmark(task, agent_config_id=agent.id)
+    run = service.execute_benchmark(task)
 
     assert run.success is True
+    assert run.agent_config_id == agent.id
     assert run.tests_passed is True
     assert run.files_changed == 1
     assert run.insertions == 1
@@ -144,3 +145,57 @@ def test_setup_failure_is_preserved_and_agent_does_not_run(tmp_path: Path):
     assert not (artifact_dir / "agent" / "stdout.log").exists()
     assert not (repo / "should-not-exist").exists()
     assert worktree_count(repo) == 1
+
+
+def test_disabled_task_and_agent_are_rejected(tmp_path: Path):
+    import pytest
+
+    repo = tmp_path / "target-disabled"
+    base_commit = init_git_repo(repo)
+    db = make_session()
+
+    agent = AgentConfig(
+        name="disabled-agent",
+        enabled=False,
+        command_template=shlex.join([sys.executable, "-c", "print('no')"]),
+    )
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+
+    disabled_task = BenchmarkTask(
+        name="disabled task",
+        description="fixture",
+        repository_path=str(repo),
+        base_commit=base_commit,
+        agent_prompt="do not run",
+        test_command="",
+        timeout=5,
+        enabled=False,
+    )
+    db.add(disabled_task)
+    db.commit()
+    db.refresh(disabled_task)
+
+    service = BenchmarkService(db, artifact_root=tmp_path / "artifacts")
+
+    with pytest.raises(ValueError, match="task is disabled"):
+        service.execute_benchmark(disabled_task)
+
+    enabled_task = BenchmarkTask(
+        name="enabled task",
+        description="fixture",
+        repository_path=str(repo),
+        base_commit=base_commit,
+        agent_prompt="do not run",
+        test_command="",
+        timeout=5,
+        enabled=True,
+        agent_config_id=agent.id,
+    )
+    db.add(enabled_task)
+    db.commit()
+    db.refresh(enabled_task)
+
+    with pytest.raises(ValueError, match="configuration is disabled"):
+        service.execute_benchmark(enabled_task)

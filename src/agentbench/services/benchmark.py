@@ -63,17 +63,33 @@ class BenchmarkService:
         self.setup_timeout = setup_timeout
         self.test_timeout = test_timeout
 
-    def create_agent_adapter(self, agent_config_id: Optional[int] = None) -> AgentAdapter:
-        if agent_config_id:
+    def _resolve_agent_config_id(
+        self,
+        agent_config_id: Optional[int],
+    ) -> Optional[int]:
+        if agent_config_id is not None:
             agent_config = (
                 self.db.query(AgentConfig)
                 .filter(AgentConfig.id == agent_config_id)
                 .first()
             )
-        else:
-            agent_config = self.db.query(AgentConfig).first()
+            if agent_config is None:
+                raise ValueError(f"Agent configuration not found: {agent_config_id}")
+            if not agent_config.enabled:
+                raise ValueError(f"Agent configuration is disabled: {agent_config_id}")
+            return agent_config.id
 
-        if not agent_config:
+        default_config = (
+            self.db.query(AgentConfig)
+            .filter(AgentConfig.enabled.is_(True))
+            .order_by(AgentConfig.id.asc())
+            .first()
+        )
+        return default_config.id if default_config is not None else None
+
+    def create_agent_adapter(self, agent_config_id: Optional[int] = None) -> AgentAdapter:
+        resolved_id = self._resolve_agent_config_id(agent_config_id)
+        if resolved_id is None:
             return ShellAgentAdapter(
                 {
                     "name": "qwen",
@@ -82,6 +98,11 @@ class BenchmarkService:
                 }
             )
 
+        agent_config = (
+            self.db.query(AgentConfig)
+            .filter(AgentConfig.id == resolved_id)
+            .one()
+        )
         return ShellAgentAdapter(
             {
                 "name": agent_config.name,
@@ -230,8 +251,17 @@ class BenchmarkService:
         agent_name: Optional[str] = None,
         model_name: Optional[str] = None,
     ) -> BenchmarkRun:
+        if not task.enabled:
+            raise ValueError(f"Benchmark task is disabled: {task.id}")
+
         started_at = datetime.utcnow()
-        adapter = self.create_agent_adapter(agent_config_id)
+        requested_agent_config_id = (
+            agent_config_id if agent_config_id is not None else task.agent_config_id
+        )
+        resolved_agent_config_id = self._resolve_agent_config_id(
+            requested_agent_config_id
+        )
+        adapter = self.create_agent_adapter(resolved_agent_config_id)
         if agent_name:
             adapter.name = agent_name
         if model_name:
@@ -255,7 +285,7 @@ class BenchmarkService:
                 "agent_timeout_seconds": task.timeout,
                 "setup_timeout_seconds": self.setup_timeout,
                 "test_timeout_seconds": self.test_timeout or task.timeout,
-                "agent_config_id": agent_config_id,
+                "agent_config_id": resolved_agent_config_id,
                 "agent_name": adapter.name,
                 "model_name": adapter.model,
             },
@@ -500,7 +530,7 @@ class BenchmarkService:
 
         run = BenchmarkRun(
             task_id=task.id,
-            agent_config_id=agent_config_id,
+            agent_config_id=resolved_agent_config_id,
             agent_name=adapter.name,
             model_name=adapter.model,
             started_at=started_at,
