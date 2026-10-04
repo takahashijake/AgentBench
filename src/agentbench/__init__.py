@@ -1,4 +1,3 @@
-# AgentBench Local
-# A local-first benchmarking platform for coding agents
+"""AgentBench: a local-first coding-agent benchmark harness."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

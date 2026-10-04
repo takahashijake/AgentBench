@@ -1,269 +1,190 @@
-"""Utility functions for AgentBench."""
+"""Git workspace lifecycle helpers for AgentBench."""
 
+from __future__ import annotations
+
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional, Tuple
 
 
 def is_git_repository(path: Path) -> bool:
-    """Check if a directory is a Git repository.
-
-    Args:
-        path: Path to check.
-
-    Returns:
-        True if the directory is a Git repository.
-    """
     if not path.exists():
         return False
-    return (path / ".git").exists() or (path / ".git").is_file()
+    result = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "true"
 
 
 def get_git_commit(path: Path) -> Optional[str]:
-    """Get the current Git commit hash.
-
-    Args:
-        path: Path to the Git repository.
-
-    Returns:
-        The commit hash, or None if not a Git repository.
-    """
     if not is_git_repository(path):
         return None
-
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=path,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError:
-        return None
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def get_git_status(path: Path) -> str:
-    """Get the Git status of a repository.
-
-    Args:
-        path: Path to the Git repository.
-
-    Returns:
-        The git status output.
-    """
     if not is_git_repository(path):
         return "Not a Git repository"
-
-    try:
-        result = subprocess.run(
-            ["git", "status", "--short"],
-            cwd=path,
-            capture_output=True,
-            text=True
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError:
-        return "Error getting status"
+    result = subprocess.run(
+        ["git", "status", "--short", "-uall"],
+        cwd=path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else "Error getting status"
 
 
 def get_git_diff_stats(path: Path, base_commit: str) -> dict:
-    """Get git diff statistics between base commit and current HEAD.
+    """Return diff metrics including untracked files."""
+    from ..evidence import collect_diff_stats
 
-    Args:
-        path: Path to the Git repository.
-        base_commit: The base commit hash to compare against.
-
-    Returns:
-        Dictionary with diff statistics including files_changed, insertions, deletions.
-    """
     if not is_git_repository(path):
-        return {"files_changed": 0, "insertions": 0, "deletions": 0}
-
-    try:
-        # Get diffstat
-        result = subprocess.run(
-            ["git", "diff", "--stat", base_commit],
-            cwd=path,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        diffstat = result.stdout.strip()
-        
-        # Count files changed
-        files_changed = len([line for line in diffstat.split('\n') if line and 'file' not in line.lower()]) if diffstat else 0
-        
-        # Get detailed stats
-        stats_result = subprocess.run(
-            ["git", "diff", "--numstat", base_commit],
-            cwd=path,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        
-        insertions = 0
-        deletions = 0
-        for line in stats_result.stdout.strip().split('\n'):
-            if line:
-                parts = line.split('\t')
-                if len(parts) >= 2:
-                    ins = parts[0]
-                    dels = parts[1]
-                    if ins != '-':
-                        insertions += int(ins)
-                    if dels != '-':
-                        deletions += int(dels)
-        
         return {
-            "files_changed": files_changed,
-            "insertions": insertions,
-            "deletions": deletions,
-            "diffstat": diffstat
+            "files_changed": 0,
+            "insertions": 0,
+            "deletions": 0,
+            "diffstat": "",
         }
+    try:
+        return collect_diff_stats(path, base_commit)
     except subprocess.CalledProcessError:
-        return {"files_changed": 0, "insertions": 0, "deletions": 0, "diffstat": ""}
+        return {
+            "files_changed": 0,
+            "insertions": 0,
+            "deletions": 0,
+            "diffstat": "",
+        }
 
 
 def create_git_worktree(repo_path: Path, commit: str = "HEAD") -> Path:
-    """Create a git worktree for isolated benchmark execution.
+    """Create a detached worktree at an exact commit/ref for benchmark isolation."""
+    repo_path = Path(repo_path).resolve()
+    if not is_git_repository(repo_path):
+        raise ValueError(f"Not a Git repository: {repo_path}")
 
-    Args:
-        repo_path: Path to the main Git repository.
-        commit: Commit hash or ref to check out in the worktree.
+    verify = subprocess.run(
+        ["git", "rev-parse", "--verify", f"{commit}^{{commit}}"],
+        cwd=repo_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if verify.returncode != 0:
+        raise ValueError(f"Base commit does not resolve to a commit: {commit}")
+    resolved_commit = verify.stdout.strip()
 
-    Returns:
-        Path to the created worktree directory.
+    worktree_path = Path(tempfile.mkdtemp(prefix="agentbench_worktree_"))
+    shutil.rmtree(worktree_path)
 
-    Raises:
-        RuntimeError: If worktree creation fails.
-    """
-    import tempfile
-    
-    # Create worktree in a temporary location
-    worktree_dir = tempfile.mkdtemp(prefix="agentbench_worktree_")
-    worktree_path = Path(worktree_dir)
-    
-    try:
-        # Create the worktree
-        result = subprocess.run(
-            ["git", "worktree", "add", str(worktree_path), commit],
+    result = subprocess.run(
+        ["git", "worktree", "add", "--detach", str(worktree_path), resolved_commit],
+        cwd=repo_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        shutil.rmtree(worktree_path, ignore_errors=True)
+        subprocess.run(
+            ["git", "worktree", "prune", "--expire", "now"],
             cwd=repo_path,
             capture_output=True,
             text=True,
-            check=True
+            check=False,
         )
-        return worktree_path
-    except subprocess.CalledProcessError as e:
-        # Clean up on failure
-        if worktree_path.exists():
-            import shutil
-            shutil.rmtree(worktree_path, ignore_errors=True)
-        raise RuntimeError(
-            f"Failed to create git worktree: {e.stderr}"
-        ) from e
+        raise RuntimeError(f"Failed to create git worktree: {result.stderr.strip()}")
+
+    return worktree_path
 
 
-def cleanup_git_worktree(worktree_path: Path, repo_path: Path) -> None:
-    """Remove a git worktree and clean up its directory.
+def cleanup_git_worktree(worktree_path: Path, repo_path: Path) -> dict:
+    """Force-remove a benchmark worktree and prune stale Git metadata."""
+    worktree_path = Path(worktree_path)
+    repo_path = Path(repo_path)
+    errors: list[str] = []
 
-    Args:
-        worktree_path: Path to the worktree directory.
-        repo_path: Path to the main Git repository.
-    """
-    if not worktree_path.exists():
-        return
+    remove_result = subprocess.run(
+        ["git", "worktree", "remove", "--force", str(worktree_path)],
+        cwd=repo_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if remove_result.returncode != 0 and remove_result.stderr.strip():
+        errors.append(remove_result.stderr.strip())
 
-    try:
-        # First remove the worktree using git worktree remove (proper removal)
-        subprocess.run(
-            ["git", "worktree", "remove", str(worktree_path)],
-            cwd=repo_path,
-            capture_output=True,
-            check=True
-        )
-    except subprocess.CalledProcessError:
-        # If worktree remove fails, try prune as fallback
-        try:
-            subprocess.run(
-                ["git", "worktree", "prune"],
-                cwd=repo_path,
-                capture_output=True,
-                check=True
-            )
-        except subprocess.CalledProcessError:
-            pass  # Git may not know about this worktree
-
-    # Remove the directory and all contents
-    import shutil
     if worktree_path.exists():
-        shutil.rmtree(worktree_path, ignore_errors=True)
+        try:
+            shutil.rmtree(worktree_path)
+        except OSError as exc:
+            errors.append(str(exc))
+
+    prune_result = subprocess.run(
+        ["git", "worktree", "prune", "--expire", "now"],
+        cwd=repo_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if prune_result.returncode != 0 and prune_result.stderr.strip():
+        errors.append(prune_result.stderr.strip())
+
+    return {
+        "success": not worktree_path.exists(),
+        "worktree_path": str(worktree_path),
+        "errors": errors,
+    }
 
 
 def create_temp_git_repository() -> Tuple[Path, str]:
-    """Create a temporary Git repository for testing.
+    """Create a minimal committed repository for deterministic tests."""
+    repo_path = Path(tempfile.mkdtemp(prefix="agentbench_repo_"))
 
-    Returns:
-        Tuple of (path, commit_hash)
-    """
-    import tempfile
-
-    # Create temporary directory
-    temp_dir = tempfile.mkdtemp(prefix="agentbench_repo_")
-    repo_path = Path(temp_dir)
-
-    # Initialize Git repository
-    subprocess.run(
-        ["git", "init"],
-        cwd=repo_path,
-        capture_output=True,
-        check=True
-    )
-
-    # Configure Git
+    subprocess.run(["git", "init"], cwd=repo_path, capture_output=True, check=True)
     subprocess.run(
         ["git", "config", "user.email", "test@example.com"],
         cwd=repo_path,
         capture_output=True,
-        check=True
+        check=True,
     )
     subprocess.run(
         ["git", "config", "user.name", "Test User"],
         cwd=repo_path,
         capture_output=True,
-        check=True
+        check=True,
     )
 
-    # Create an initial file and commit
-    test_file = repo_path / "README.md"
-    test_file.write_text("# Test Repository\n\nThis is a test repository for AgentBench.\n")
-
-    subprocess.run(
-        ["git", "add", "."],
-        cwd=repo_path,
-        capture_output=True,
-        check=True
+    (repo_path / "README.md").write_text(
+        "# Test Repository\n\nThis is a test repository for AgentBench.\n",
+        encoding="utf-8",
     )
+    subprocess.run(["git", "add", "."], cwd=repo_path, capture_output=True, check=True)
     subprocess.run(
         ["git", "commit", "-m", "Initial commit"],
         cwd=repo_path,
         capture_output=True,
-        check=True
+        check=True,
     )
 
     commit_hash = get_git_commit(repo_path)
-
+    if commit_hash is None:
+        raise RuntimeError("Failed to resolve test repository commit")
     return repo_path, commit_hash
 
 
 def cleanup_temp_repository(path: Path) -> None:
-    """Clean up a temporary Git repository.
-
-    Args:
-        path: Path to the temporary repository.
-    """
-    import shutil
-    if path.exists():
-        shutil.rmtree(path, ignore_errors=True)
+    shutil.rmtree(path, ignore_errors=True)

@@ -1,25 +1,23 @@
 """Pydantic schemas for AgentBench API."""
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, Field
 
 
 class AgentConfigBase(BaseModel):
-    """Base schema for agent configuration."""
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    command_template: str = Field(default="qwen -p \"{prompt}\"")
+    command_template: str = Field(default="qwen -p {prompt}")
     enabled: bool = True
 
 
 class AgentConfigCreate(AgentConfigBase):
-    """Schema for creating a new agent configuration."""
     pass
 
 
 class AgentConfigUpdate(BaseModel):
-    """Schema for updating an agent configuration."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     command_template: Optional[str] = None
@@ -27,7 +25,6 @@ class AgentConfigUpdate(BaseModel):
 
 
 class AgentConfig(AgentConfigBase):
-    """Schema for agent configuration with database fields."""
     id: int
     created_at: datetime
     updated_at: datetime
@@ -37,7 +34,6 @@ class AgentConfig(AgentConfigBase):
 
 
 class BenchmarkTaskBase(BaseModel):
-    """Base schema for benchmark task."""
     name: str = Field(..., min_length=1, max_length=255)
     description: str = Field(..., min_length=1)
     repository_path: str = Field(..., min_length=1)
@@ -45,17 +41,15 @@ class BenchmarkTaskBase(BaseModel):
     agent_prompt: str = Field(..., min_length=1)
     setup_command: Optional[str] = None
     test_command: str = Field(default="pytest")
-    timeout: int = Field(default=300, ge=60, le=3600)
+    timeout: int = Field(default=300, ge=1, le=3600)
     enabled: bool = True
 
 
 class BenchmarkTaskCreate(BenchmarkTaskBase):
-    """Schema for creating a new benchmark task."""
     agent_config_id: Optional[int] = None
 
 
 class BenchmarkTaskUpdate(BaseModel):
-    """Schema for updating a benchmark task."""
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     repository_path: Optional[str] = None
@@ -63,13 +57,12 @@ class BenchmarkTaskUpdate(BaseModel):
     agent_prompt: Optional[str] = None
     setup_command: Optional[str] = None
     test_command: Optional[str] = None
-    timeout: Optional[int] = Field(None, ge=60, le=3600)
+    timeout: Optional[int] = Field(None, ge=1, le=3600)
     enabled: Optional[bool] = None
     agent_config_id: Optional[int] = None
 
 
 class BenchmarkTask(BenchmarkTaskBase):
-    """Schema for benchmark task with database fields."""
     id: int
     agent_config_id: Optional[int] = None
     created_at: datetime
@@ -80,21 +73,18 @@ class BenchmarkTask(BenchmarkTaskBase):
 
 
 class BenchmarkRunBase(BaseModel):
-    """Base schema for benchmark run."""
     task_id: int
     agent_name: Optional[str] = None
     model_name: Optional[str] = None
 
 
 class BenchmarkRunCreate(BenchmarkRunBase):
-    """Schema for creating a new benchmark run."""
     agent_config_id: Optional[int] = None
     agent_name: Optional[str] = None
     model_name: Optional[str] = None
 
 
 class BenchmarkRun(BenchmarkRunBase):
-    """Schema for benchmark run with database fields."""
     id: int
     agent_config_id: Optional[int] = None
     started_at: Optional[datetime] = None
@@ -125,7 +115,6 @@ class BenchmarkRun(BenchmarkRunBase):
 
 
 class BenchmarkRunList(BaseModel):
-    """Schema for listing benchmark runs with pagination."""
     total: int
     limit: int
     offset: int
@@ -133,7 +122,6 @@ class BenchmarkRunList(BaseModel):
 
 
 class DiffStats(BaseModel):
-    """Schema for git diff statistics."""
     files_changed: int
     insertions: int
     deletions: int
@@ -141,7 +129,6 @@ class DiffStats(BaseModel):
 
 
 class TestResult(BaseModel):
-    """Schema for test execution results."""
     command: str
     passed: bool
     tests_passed: int
@@ -151,7 +138,6 @@ class TestResult(BaseModel):
 
 
 class BenchmarkRunResult(BaseModel):
-    """Schema for complete benchmark run result."""
     run_id: int
     task_id: int
     task_name: str
