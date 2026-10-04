@@ -18,8 +18,11 @@ from agentbench.benchmark_packs import (
 )
 from agentbench.benchmark_packs.discovery import discover_pack_providers
 from agentbench.manifests import load_suite_manifest
-from agentbench.models.database import AgentConfig, Base
+from agentbench.models.database import AgentConfig, Base, BenchmarkTask
 from agentbench.services.benchmark import BenchmarkService
+from agentbench.services.experiment import ExperimentService
+from agentbench.services.suite import SuiteService
+from helpers import init_git_repo
 
 
 class TinyProvider:
@@ -175,3 +178,66 @@ def test_adapter_registry_rejects_duplicate_registration():
 
     with pytest.raises(ValueError, match="already registered"):
         registry.register("x", lambda config: FakeAdapter(dict(config)))
+
+
+
+def test_injected_adapter_flows_through_experiment_and_suite_services(tmp_path: Path):
+    registry = AdapterRegistry()
+    registry.register("python", lambda config: FakeAdapter(dict(config)))
+    db = make_session()
+
+    repo = tmp_path / "target"
+    base_commit = init_git_repo(repo)
+    agent = AgentConfig(name="custom-flow", command_template="python tool.py {prompt}")
+    db.add(agent)
+    db.flush()
+    task = BenchmarkTask(
+        name="custom-flow-task",
+        description="fixture",
+        repository_path=str(repo),
+        base_commit=base_commit,
+        agent_prompt="exercise injected adapter",
+        test_command="",
+        timeout=5,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(agent)
+    db.refresh(task)
+
+    benchmark_service = BenchmarkService(
+        db,
+        artifact_root=tmp_path / "artifacts",
+        adapter_registry=registry,
+    )
+    experiment_service = ExperimentService(
+        db,
+        benchmark_service=benchmark_service,
+    )
+    suite_service = SuiteService(
+        db,
+        experiment_service=experiment_service,
+    )
+
+    experiment = suite_service.experiments.create_experiment(
+        name="injected-flow",
+        task_ids=[task.id],
+        agent_config_ids=[agent.id],
+        repetitions=1,
+    )
+    completed = suite_service.experiments.execute_experiment(experiment.id)
+    summary = suite_service.experiments.aggregate_experiment(experiment.id)
+
+    assert completed.status == "completed"
+    assert summary["overall"]["successful_runs"] == 1
+    run = completed.trials[0].benchmark_run
+    assert run.results["adapter_metadata"]["adapter"] == "fake"
+
+
+def test_service_injection_rejects_cross_session_dependencies(tmp_path: Path):
+    left = make_session()
+    right = make_session()
+    foreign = BenchmarkService(right, artifact_root=tmp_path / "foreign")
+
+    with pytest.raises(ValueError, match="same database session"):
+        ExperimentService(left, benchmark_service=foreign)
