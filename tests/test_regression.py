@@ -206,8 +206,7 @@ def test_regression_cli_uses_distinct_gate_exit_code(tmp_path: Path, capsys):
 
 
 def test_regression_comparison_rejects_task_definition_drift(tmp_path: Path):
-    db, experiment, _, baseline = (*build_regression_fixture(tmp_path), None)
-    # The tuple unpack above is intentionally not used for the candidate bundle.
+    db, experiment, _ = build_regression_fixture(tmp_path)
     # Export the baseline, then alter the frozen portable task definition.
     service = ResultBundleService(db)
     baseline_path = tmp_path / "stable.zip"
