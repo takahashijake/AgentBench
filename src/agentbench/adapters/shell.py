@@ -81,6 +81,11 @@ class ShellAgentAdapter(AgentAdapter):
                 self.config.get("agent_family")
                 or detect_agent_family(self.command_template)
             ),
+            "adapter_provider": self.config.get("adapter_provider"),
+            "adapter_implementation": self.config.get("adapter_implementation"),
+            "adapter_capabilities": dict(
+                self.config.get("adapter_capabilities") or {}
+            ),
             "command_template": self.command_template,
             "workspace_path": str(self.workspace_path) if self.workspace_path else None,
         }
