@@ -33,39 +33,103 @@ Each matrix cell is an `ExperimentTrial`. A trial points to a normal `BenchmarkR
 
 Task and agent definitions are snapshotted when the experiment is planned. If an execution-relevant definition drifts before a trial runs, the trial is recorded as an orchestration error instead of silently benchmarking a different configuration.
 
-Experiment summaries include:
-
-- completion rate
-- success rate and benchmark-only success rate
-- benchmark failures versus orchestration errors
-- tests passed/failed
-- total/average/min/max runtime
-- token totals when adapters report them
-- files changed, insertions, and deletions
-- per-agent metrics
-- per-task metrics
-- per-(task, agent) cell metrics across repetitions
+Experiment summaries include completion/success rates, benchmark failures versus orchestration errors, tests passed/failed, runtime statistics, token totals when available, code-change totals, and per-agent/per-task/per-cell aggregates.
 
 A coding agent returning a non-zero exit code is a valid benchmark measurement and does **not** become an experiment orchestration error.
 
+## Versioned suite manifests
+
+A complete comparison can now be defined in a version-controlled YAML or JSON file instead of manually constructing database rows.
+
+Example:
+
+```yaml
+schema_version: 1
+id: qwen-vs-codex-smoke
+name: Qwen vs Codex smoke suite
+description: Small reproducible comparison over two coding agents.
+
+agents:
+  - id: qwen-local
+    command_template: qwen -p "{prompt}"
+    description: Local Qwen coding agent
+
+  - id: codex
+    command_template: codex exec "{prompt}"
+    description: Codex CLI
+
+tasks:
+  - id: parser-fix
+    description: Fix the parser regression and keep the test suite green.
+    repository_path: ../fixtures/parser-project
+    base_commit: 0123456789abcdef0123456789abcdef01234567
+    agent_prompt: |
+      Fix the parser regression described by the failing tests.
+      Do not weaken or delete tests.
+    setup_command: python -m pip install -e .
+    test_command: pytest -q
+    timeout: 600
+
+experiment:
+  tasks: [parser-fix]
+  agents: [qwen-local, codex]
+  repetitions: 3
+  stop_on_error: false
+```
+
+Repository paths are resolved relative to the manifest file. Resource IDs are stable: imports persist them as `<suite-id>/<resource-id>`, so importing the same suite again updates the existing task/agent records instead of silently duplicating them. Manifest validation also rejects duplicate IDs, unknown selections, disabled selected resources, unsupported schema versions, malformed commit IDs, and matrices above the existing 10,000-run safety limit.
+
+### CLI
+
+Validate without touching the database:
+
+```bash
+PYTHONPATH=src python -m agentbench.cli validate suites/smoke.yaml
+```
+
+Idempotently import tasks and agents:
+
+```bash
+PYTHONPATH=src python -m agentbench.cli import suites/smoke.yaml
+```
+
+Import, plan, execute, aggregate, and export a machine-readable report:
+
+```bash
+PYTHONPATH=src python -m agentbench.cli run suites/smoke.yaml \
+  --output results/smoke.json
+```
+
+Export aggregate results for an already persisted experiment:
+
+```bash
+PYTHONPATH=src python -m agentbench.cli results 12 \
+  --output results/experiment-12.json
+```
+
+The suite report includes the canonical manifest SHA-256, resolved task repositories/base commits, stable resource IDs and database IDs, experiment metadata, and the existing aggregate comparison metrics.
+
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md). The main execution path is:
+See [ARCHITECTURE.md](ARCHITECTURE.md). The execution path is:
 
 ```text
-API
-  -> ExperimentService
-      -> planned ExperimentTrial matrix
-      -> BenchmarkService for each trial
-          -> Git worktree lifecycle
-          -> AgentAdapter
-              -> process execution
-          -> Git evidence capture
-          -> immutable artifact store
-          -> bounded tests
-          -> BenchmarkRun
-      -> aggregate comparison metrics
+suite manifest / API
+  -> SuiteService (manifest workflows only)
+      -> ExperimentService
+          -> planned ExperimentTrial matrix
+          -> BenchmarkService for each trial
+              -> Git worktree lifecycle
+              -> AgentAdapter
+                  -> process execution
+              -> Git evidence capture
+              -> immutable artifact store
+              -> bounded tests
+              -> BenchmarkRun
+          -> aggregate comparison metrics
 ```
+
+The CLI and suite layer do not reimplement benchmark execution; they resolve versioned file definitions into the same persisted services used by the API.
 
 ## Local QA
 
@@ -116,4 +180,4 @@ Calling the run endpoint again after all trials are terminal does not create dup
 
 ## Development direction
 
-Keep the integrity and experiment-matrix tests green. The next useful layer is a reproducible benchmark-suite/task manifest and CLI so experiment definitions can be versioned, imported, executed, and exported without constructing database rows manually.
+Keep the integrity, experiment-matrix, and suite-manifest tests green. The next useful milestone is stronger run provenance: environment/tool version fingerprints and a suite lock/replay format that can prove a later rerun used the same resolved repositories, agent definitions, and execution environment.
