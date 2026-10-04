@@ -24,6 +24,7 @@ nav:
       - Interpreting Results: guides/interpreting-results.md
       - Publishing Results: guides/publishing-results.md
       - Regression Gates: guides/regression-gates.md
+      - Benchmark Campaigns: guides/campaigns.md
       - Extensions: EXTENSIONS.md
       - Result Bundles: RESULT_BUNDLES.md
   - Reference:
