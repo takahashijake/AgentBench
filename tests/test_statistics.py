@@ -5,6 +5,7 @@ import pytest
 from agentbench.statistics import (
     build_agent_ranking,
     build_pairwise_task_comparison,
+    exact_two_sided_sign_test,
     numeric_summary,
     wilson_interval,
 )
@@ -89,3 +90,48 @@ def test_pairwise_comparison_keeps_equal_quality_as_tie():
     assert comparison["right_task_wins"] == 0
     assert comparison["ties"] == 1
     assert comparison["left_decisive_win_rate"] == 1.0
+
+
+
+def test_exact_sign_test_is_exact_and_excludes_ties():
+    result = exact_two_sided_sign_test(4, 0)
+
+    assert result is not None
+    assert result["decisive_tasks"] == 4
+    assert result["p_value"] == pytest.approx(0.125)
+    assert exact_two_sided_sign_test(0, 0) is None
+
+
+def test_pairwise_comparison_reports_effect_and_sign_test():
+    cells = []
+    for task_id, left, right in (
+        (1, 1.0, 0.0),
+        (2, 1.0, 0.0),
+        (3, 0.5, 0.5),
+        (4, 0.0, 1.0),
+    ):
+        cells.extend(
+            [
+                {
+                    "task_id": task_id,
+                    "agent_config_id": 1,
+                    "agent_name": "left",
+                    "metrics": {"success_rate": left},
+                },
+                {
+                    "task_id": task_id,
+                    "agent_config_id": 2,
+                    "agent_name": "right",
+                    "metrics": {"success_rate": right},
+                },
+            ]
+        )
+
+    comparison = build_pairwise_task_comparison(cells, [1, 2])[0]
+
+    assert comparison["left_task_wins"] == 2
+    assert comparison["right_task_wins"] == 1
+    assert comparison["ties"] == 1
+    assert comparison["mean_success_rate_difference"] == pytest.approx(0.25)
+    assert comparison["exact_sign_test"]["decisive_tasks"] == 3
+    assert comparison["exact_sign_test"]["p_value"] == pytest.approx(1.0)
