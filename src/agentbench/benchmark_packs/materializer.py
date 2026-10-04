@@ -180,6 +180,7 @@ class PackMaterializer:
                 "id": pack.id,
                 "version": pack.version,
                 "provider": resolved.provider_id,
+                "compatibility_id": pack.effective_compatibility_id,
                 "description": pack.description,
             },
             "agents": normalized_agents,
