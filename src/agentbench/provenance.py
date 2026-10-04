@@ -25,7 +25,8 @@ from . import __version__
 from .manifests import LoadedSuiteManifest
 
 
-LOCK_SCHEMA_VERSION = 1
+LOCK_SCHEMA_VERSION = 2
+SUPPORTED_LOCK_SCHEMA_VERSIONS = frozenset({1, 2})
 _VERSION_TIMEOUT_SECONDS = 3
 _MAX_VERSION_OUTPUT = 1000
 
@@ -238,7 +239,7 @@ def load_suite_lock(path: str | Path) -> dict[str, Any]:
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid suite lock JSON: {exc}") from exc
     lock = SuiteLock.model_validate(raw)
-    if lock.lock_schema_version != LOCK_SCHEMA_VERSION:
+    if lock.lock_schema_version not in SUPPORTED_LOCK_SCHEMA_VERSIONS:
         raise ValueError(
             f"Unsupported lock_schema_version: {lock.lock_schema_version}"
         )

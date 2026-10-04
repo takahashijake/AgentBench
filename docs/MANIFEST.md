@@ -2,59 +2,68 @@
 
 AgentBench accepts YAML or JSON suite manifests.
 
-- **schema_version 1** remains supported for V1 custom suites.
-- **schema_version 2** adds benchmark-corpus metadata used by V2 packs and reports.
+- **schema_version 1** — original custom suites
+- **schema_version 2** — V2 benchmark-pack metadata
+- **schema_version 3** — V3 provider identity for extensible corpora
+
+All three remain readable in V3.
 
 ## Top level
 
 | Field | Required | Meaning |
 |---|---|---|
-| `schema_version` | yes | `1` or `2` |
+| `schema_version` | yes | `1`, `2`, or `3` |
 | `id` | yes | stable suite identifier |
 | `name` | no | display name |
 | `description` | no | human description |
-| `benchmark_pack` | no | corpus ID/version provenance |
+| `benchmark_pack` | no | corpus identity/version/provider |
 | `agents` | yes | one or more agent definitions |
 | `tasks` | yes | one or more benchmark tasks |
 | `experiment` | no | matrix selection and execution policy |
 
 Resource IDs may contain letters, numbers, `.`, `_`, and `-`.
 
-## Benchmark pack metadata
+## V3 benchmark-pack metadata
 
-Schema V2 can identify the corpus that generated the suite:
+Generated V3 packs include the provider:
 
 ```yaml
+schema_version: 3
+id: agentbench-core-v3
+name: AgentBench Core V3
+
 benchmark_pack:
-  id: core-v2
-  version: 2.0.0
-  description: Portable deterministic software-engineering tasks.
+  id: core-v3
+  version: 3.0.0
+  provider: agentbench.builtin
+  description: Expanded deterministic Python engineering corpus.
 ```
 
-Pack metadata is included in canonical manifest hashing, reports, and
-reproducibility locks.
+Provider identity participates in canonical manifest hashing, reports, and suite
+locks.
+
+V2 schema-2 manifests without `provider` remain valid.
 
 ## Agent
 
 ```yaml
 - id: qwen
-  description: Local Qwen agent
+  description: Local Qwen CLI
   command_template: qwen -p "{prompt}"
   enabled: true
 ```
 
-The shell adapter parses the command template with `shlex` and substitutes
-`{prompt}` inside argv tokens. The prompt itself is not shell-interpolated.
+The shell-backed adapter parses templates with `shlex` and substitutes
+`{prompt}` into argv tokens. Prompt content is not shell-interpolated.
 
-Built-in pack materialization requires `{prompt}` so generated suites cannot
-accidentally define an agent that never receives the task.
+Built-in pack materialization requires `{prompt}`.
 
 ## Task
 
 ```yaml
 - id: parser-fix
   description: Repair parser regression
-  repository_path: ../project
+  repository_path: ./repositories/parser-fix
   base_commit: 0123456789abcdef0123456789abcdef01234567
   agent_prompt: Fix the parser without weakening tests.
   setup_command: python -m pip install -e .
@@ -68,11 +77,8 @@ accidentally define an agent that never receives the task.
 
 `repository_path` is resolved relative to the manifest.
 
-V2's `category`, `difficulty`, and `tags` fields are optional descriptive
-corpus metadata. They are included in the manifest identity and suite report.
-
-`setup_command` and `test_command` are trusted benchmark configuration and may
-use shell syntax. Agent invocation remains argv-based.
+Category/difficulty/tags are descriptive corpus metadata and participate in the
+manifest identity.
 
 ## Experiment
 
@@ -85,63 +91,64 @@ experiment:
   stop_on_error: false
 ```
 
-If `tasks` or `agents` is omitted, all enabled definitions of that type are
-selected in manifest order.
+If task/agent selections are omitted, all enabled resources are selected in
+manifest order.
 
-The experiment safety limit is 10,000 planned runs.
+The safety limit remains 10,000 planned runs.
 
 ## Canonical manifest identity
 
-After validation, AgentBench serializes the normalized Pydantic model with sorted
-JSON keys and hashes it with SHA-256.
+After validation, AgentBench serializes normalized model data with deterministic
+JSON key ordering and computes SHA-256.
 
-This means semantically equivalent YAML formatting does not define a different
-manifest merely because whitespace or key ordering changed.
+YAML whitespace/comments therefore do not change identity, while provider,
+commands, task definitions, selections, or other semantic fields do.
 
-## Reproducibility lock
+## Suite locks
 
-`agentbench lock` emits a JSON lock envelope.
+V3 writers emit:
 
-The lock includes:
+```json
+{"lock_schema_version": 2}
+```
 
-- suite ID and schema version
-- benchmark-pack metadata when present
-- canonical manifest SHA-256
+Lock schema 1 remains readable. This is important for diagnosing historical V2
+locks: an old lock can be loaded even though replay verification may correctly
+report environment/version/configuration drift.
+
+Current locks include:
+
+- suite ID/schema/canonical manifest digest
+- pack ID/version/provider when present
 - resolved task commits
-- task prompt SHA-256
-- setup/test commands and timeout
-- V2 task category/difficulty/tags
-- selected experiment matrix
+- agent-prompt digests
+- setup/test commands and timeouts
+- task category/difficulty/tags
+- selected matrix/repetitions
 - agent command templates
 - executable identity/version/binary SHA-256
-- bounded environment identity
-- canonical `identity_sha256`
-
-The identity hash is computed over the canonical lock content excluding the
-identity field itself.
+- bounded AgentBench/Python/platform/Git identity
+- canonical lock identity SHA-256
 
 ## Drift behavior
 
 `agentbench verify` returns:
 
-- exit code `0` when current resolution matches
-- exit code `3` when material drift is detected
-- exit code `2` for invalid input/runtime errors
+- exit `0` — current resolution matches
+- exit `3` — material drift
+- exit `2` — invalid input/runtime error
 
-Drift output includes field paths plus expected/actual values.
-
-`agentbench replay` verifies first and refuses execution when the lock does not
-match.
+`agentbench replay` verifies before execution and fails closed on mismatch.
 
 ## Bounded provenance
 
-The lock deliberately does not capture:
+Locks deliberately do not capture:
 
 - environment variables
-- API keys/tokens
+- credentials/tokens
 - home-directory contents
-- full installed-package inventories
+- full package inventories
 - arbitrary machine identifiers
 
-The provenance contract is bounded to information that materially helps explain
-benchmark reproducibility without collecting secrets.
+The contract records inputs useful for benchmark reproducibility without turning
+a lock file into a system dump.

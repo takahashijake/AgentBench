@@ -47,11 +47,7 @@ class ShellAgentAdapter(AgentAdapter):
         if not tokens:
             raise ValueError("Agent command template is empty")
 
-        rendered: list[str] = []
-        for token in tokens:
-            rendered.append(token.replace("{prompt}", prompt))
-
-        return rendered
+        return [token.replace("{prompt}", prompt) for token in tokens]
 
     def run_task(
         self,
@@ -71,16 +67,20 @@ class ShellAgentAdapter(AgentAdapter):
             self.last_result.stderr,
         )
 
+    def process_result(self) -> Optional[ProcessResult]:
+        return self.last_result
+
     def terminate(self) -> None:
         # run_process owns and tears down the complete process group on timeout.
-        # BenchmarkService is synchronous, so there is no separately exposed live
-        # process to terminate here.
         return None
 
     def collect_metadata(self) -> Dict[str, Any]:
         metadata: Dict[str, Any] = {
-            "adapter": "shell",
-            "agent_family": detect_agent_family(self.command_template),
+            "adapter": str(self.config.get("adapter") or "shell"),
+            "agent_family": str(
+                self.config.get("agent_family")
+                or detect_agent_family(self.command_template)
+            ),
             "command_template": self.command_template,
             "workspace_path": str(self.workspace_path) if self.workspace_path else None,
         }

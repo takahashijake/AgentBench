@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from ..execution import ProcessResult
+
 
 class AgentAdapter(ABC):
     """Common interface for coding-agent adapters."""
@@ -41,6 +43,10 @@ class AgentAdapter(ABC):
     def collect_metadata(self) -> Dict[str, Any]:
         """Return execution metadata suitable for persistent benchmark results."""
         raise NotImplementedError
+
+    def process_result(self) -> Optional[ProcessResult]:
+        """Return the bounded process result when the adapter exposes one."""
+        return None
 
     def set_output_paths(self, stdout_path: Path, stderr_path: Path) -> None:
         """Compatibility hook for adapters that stream directly to files."""

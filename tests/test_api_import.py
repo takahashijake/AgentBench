@@ -7,12 +7,12 @@ def test_api_import_and_mapper_configuration():
     from agentbench.api import TEMPLATES_DIR, app, templates
 
     assert app.title == "AgentBench Local"
-    assert app.version == "2.0.0"
+    assert app.version == "3.0.0"
 
-    paths = {route.path for route in app.routes}
+    paths = set(app.openapi()["paths"])
     assert "/" in paths
     assert "/dashboard" in paths
-    assert "/docs" in paths
+    assert app.docs_url == "/docs"
     assert "/api/health" in paths
     assert "/api/packs" in paths
     assert "/api/packs/{pack_id}" in paths
@@ -30,7 +30,7 @@ def test_api_import_and_mapper_configuration():
 
 
 
-def test_packaged_v2_templates_compile():
+def test_packaged_v3_templates_compile():
     from agentbench.api import templates
 
     for name in (
@@ -41,3 +41,14 @@ def test_packaged_v2_templates_compile():
         "experiment_detail.html",
     ):
         assert templates.get_template(name) is not None
+
+
+
+def test_application_factory_returns_independent_fastapi_instances():
+    from agentbench.api import create_app
+
+    first = create_app()
+    second = create_app()
+
+    assert first is not second
+    assert set(first.openapi()["paths"]) == set(second.openapi()["paths"])

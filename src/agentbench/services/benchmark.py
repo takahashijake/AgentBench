@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from ..adapters.base import AgentAdapter
-from ..adapters.shell import ShellAgentAdapter
+from ..adapters.registry import AdapterRegistry, create_default_adapter_registry
 from ..artifacts import RunArtifactStore
 from ..evidence import capture_git_evidence
 from ..execution import ProcessResult, run_shell_command
@@ -58,11 +58,13 @@ class BenchmarkService:
         artifact_root: Optional[Path] = None,
         setup_timeout: int = 300,
         test_timeout: Optional[int] = None,
+        adapter_registry: Optional[AdapterRegistry] = None,
     ):
         self.db = db
         self.artifact_root = artifact_root
         self.setup_timeout = setup_timeout
         self.test_timeout = test_timeout
+        self.adapter_registry = adapter_registry or create_default_adapter_registry()
 
     def _resolve_agent_config_id(
         self,
@@ -91,26 +93,23 @@ class BenchmarkService:
     def create_agent_adapter(self, agent_config_id: Optional[int] = None) -> AgentAdapter:
         resolved_id = self._resolve_agent_config_id(agent_config_id)
         if resolved_id is None:
-            return ShellAgentAdapter(
-                {
-                    "name": "qwen",
-                    "model": "default",
-                    "command_template": "qwen -p {prompt}",
-                }
+            config = {
+                "name": "qwen",
+                "model": "default",
+                "command_template": "qwen -p {prompt}",
+            }
+        else:
+            agent_config = (
+                self.db.query(AgentConfig)
+                .filter(AgentConfig.id == resolved_id)
+                .one()
             )
-
-        agent_config = (
-            self.db.query(AgentConfig)
-            .filter(AgentConfig.id == resolved_id)
-            .one()
-        )
-        return ShellAgentAdapter(
-            {
+            config = {
                 "name": agent_config.name,
                 "model": "default",
                 "command_template": agent_config.command_template,
             }
-        )
+        return self.adapter_registry.create(config)
 
     def verify_repository(self, repo_path: Path) -> str:
         repo_path = Path(repo_path)
@@ -305,6 +304,7 @@ class BenchmarkService:
                 "agent_config_id": resolved_agent_config_id,
                 "agent_name": adapter.name,
                 "model_name": adapter.model,
+                "adapter_type": str(adapter.config.get("adapter") or "shell"),
             },
         )
 
@@ -347,8 +347,9 @@ class BenchmarkService:
                     task.agent_prompt,
                     task.timeout,
                 )
-                if isinstance(adapter, ShellAgentAdapter) and adapter.last_result is not None:
-                    agent_result = adapter.last_result
+                bounded_result = adapter.process_result()
+                if bounded_result is not None:
+                    agent_result = bounded_result
                 else:
                     agent_result = ProcessResult(
                         returncode=exit_code,

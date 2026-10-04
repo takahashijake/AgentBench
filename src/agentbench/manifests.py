@@ -35,6 +35,7 @@ class ManifestBenchmarkPack(BaseModel):
 
     id: str = Field(..., min_length=1, max_length=128, pattern=_RESOURCE_ID_PATTERN)
     version: str = Field(..., min_length=1, max_length=64)
+    provider: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = None
 
 
@@ -91,7 +92,7 @@ class SuiteManifest(BaseModel):
 
     @model_validator(mode="after")
     def validate_manifest(self) -> "SuiteManifest":
-        if self.schema_version not in {1, 2}:
+        if self.schema_version not in {1, 2, 3}:
             raise ValueError(
                 f"Unsupported suite manifest schema_version: {self.schema_version}"
             )

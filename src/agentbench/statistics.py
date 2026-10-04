@@ -173,6 +173,35 @@ def build_agent_ranking(by_agent: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def exact_two_sided_sign_test(wins: int, losses: int) -> dict[str, Any] | None:
+    """Exact two-sided sign test over decisive paired task outcomes.
+
+    Ties are excluded. The null is an equal probability of either agent winning a
+    decisive task. Independence across benchmark tasks remains an experimental
+    assumption, so this result is reported but never used to manufacture rank.
+    """
+
+    wins = int(wins)
+    losses = int(losses)
+    if wins < 0 or losses < 0:
+        raise ValueError("wins and losses must be non-negative")
+    decisive = wins + losses
+    if decisive == 0:
+        return None
+    tail = min(wins, losses)
+    probability = sum(
+        math.comb(decisive, k) for k in range(tail + 1)
+    ) / (2 ** decisive)
+    return {
+        "method": "exact_two_sided_sign_test",
+        "p_value": min(1.0, 2.0 * probability),
+        "decisive_tasks": decisive,
+        "wins": wins,
+        "losses": losses,
+        "null_win_probability": 0.5,
+    }
+
+
 def build_pairwise_task_comparison(
     by_cell: list[dict[str, Any]],
     agent_order: list[int],
@@ -197,6 +226,7 @@ def build_pairwise_task_comparison(
     comparisons: list[dict[str, Any]] = []
     for left_id, right_id in combinations(agent_order, 2):
         wins = losses = ties = compared = 0
+        differences: list[float] = []
         for task_id in sorted(task_ids):
             left = cells.get((task_id, left_id))
             right = cells.get((task_id, right_id))
@@ -207,6 +237,7 @@ def build_pairwise_task_comparison(
             if left_rate is None or right_rate is None:
                 continue
             compared += 1
+            differences.append(float(left_rate) - float(right_rate))
             if left_rate > right_rate:
                 wins += 1
             elif left_rate < right_rate:
@@ -226,6 +257,10 @@ def build_pairwise_task_comparison(
                 "right_task_wins": losses,
                 "ties": ties,
                 "left_decisive_win_rate": wins / decisive if decisive else None,
+                "mean_success_rate_difference": (
+                    mean(differences) if differences else None
+                ),
+                "exact_sign_test": exact_two_sided_sign_test(wins, losses),
             }
         )
     return comparisons
@@ -234,6 +269,7 @@ def build_pairwise_task_comparison(
 __all__ = [
     "build_agent_ranking",
     "build_pairwise_task_comparison",
+    "exact_two_sided_sign_test",
     "numeric_summary",
     "wilson_interval",
 ]
