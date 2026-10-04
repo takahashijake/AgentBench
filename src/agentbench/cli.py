@@ -36,6 +36,7 @@ from .result_bundles import (
     inspect_result_bundle,
     verify_result_bundle,
 )
+from .services.distributed_worker import DistributedWorkerService
 from .services.experiment import ExperimentBusyError, ExperimentNotFoundError
 from .services.suite import SuiteService
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 import socket
 import threading
 import uuid
@@ -30,7 +30,7 @@ class WorkerClaim:
     owner_id: str
     lease_token: str
     lease_seconds: int
-    expires_at: Any
+    expires_at: datetime
 
 
 class DistributedWorkerService:
