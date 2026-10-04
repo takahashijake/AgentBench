@@ -11,4 +11,4 @@ AgentBench is a local-first evaluation platform for coding agents. It is designe
 - [Architecture](concepts/architecture.md) — understand the dependency boundaries and extension seams.
 - [Development setup](development/development-setup.md) — run the same checks enforced by CI.
 
-The root [README](../README.md) is the product landing page. These docs provide the operational and extension details needed to work on AgentBench without repository-specific tribal knowledge.
+The repository README is the product landing page. This documentation site provides the operational and extension details needed to work on AgentBench without repository-specific tribal knowledge.

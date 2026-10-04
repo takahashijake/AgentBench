@@ -1,135 +1,89 @@
-# AgentBench V2 portfolio demo
+# AgentBench V3 portfolio demo
 
-This walkthrough demonstrates the product in the order a reviewer can understand
-it: corpus → reproducibility → execution → statistics → evidence.
+This walkthrough is designed for a technical reviewer: corpus → reproducibility → execution → statistics → portable evidence.
 
-## 1. Install and inspect the product
+## 1. Install and inspect
 
 ```bash
 python -m pip install -e ".[dev]"
-
 agentbench --version
 agentbench doctor
 agentbench pack list
-agentbench pack show core-v2
+agentbench pack show core-v3
 ```
 
-## 2. Materialize a real benchmark corpus
+For a repository-health review, `make qa` runs the local lint, format, type, test, docs, build, and smoke gates used by CI.
 
-Use coding-agent commands installed on the machine:
+## 2. Materialize the V3 corpus
 
 ```bash
-agentbench pack materialize core-v2 \
-  --output ./benchmarks/core-v2 \
+agentbench pack materialize core-v3 \
+  --output ./benchmarks/core-v3 \
   --agent 'qwen=qwen -p "{prompt}"' \
   --agent 'codex=codex exec "{prompt}"' \
   --repetitions 5
+
+agentbench validate ./benchmarks/core-v3/suite.yaml
 ```
 
-AgentBench creates four standalone Git repositories and a schema-v2 suite
-manifest. The task repositories start in deliberately unsolved states.
+The built-in V3 pack contains eight deterministic software-engineering tasks and emits a schema-3 suite manifest with pack provider identity.
 
-Review:
-
-```bash
-find ./benchmarks/core-v2 -maxdepth 2 -type f
-cat ./benchmarks/core-v2/suite.yaml
-agentbench validate ./benchmarks/core-v2/suite.yaml
-```
-
-## 3. Lock the experiment
+## 3. Lock and verify the exact experiment
 
 ```bash
-agentbench lock ./benchmarks/core-v2/suite.yaml \
-  --output ./benchmarks/core-v2/suite.lock.json
-```
+agentbench lock ./benchmarks/core-v3/suite.yaml \
+  --output ./benchmarks/core-v3/suite.lock.json
 
-The lock resolves exact task commits and fingerprints the agent executables,
-AgentBench/Python/platform/Git identity, matrix policy, and corpus metadata.
-
-Verify before running:
-
-```bash
 agentbench verify \
-  ./benchmarks/core-v2/suite.yaml \
-  ./benchmarks/core-v2/suite.lock.json
+  ./benchmarks/core-v3/suite.yaml \
+  ./benchmarks/core-v3/suite.lock.json
 ```
 
-A mismatch fails closed and identifies the drift.
+The lock records material experiment inputs and execution provenance. Verification fails closed when the suite, task commits, executable identity, or other locked material inputs drift.
 
 ## 4. Execute repeated trials
 
 ```bash
 mkdir -p results
-
 agentbench replay \
-  ./benchmarks/core-v2/suite.yaml \
-  ./benchmarks/core-v2/suite.lock.json \
-  --output results/core-v2.json \
-  --markdown results/core-v2.md
+  ./benchmarks/core-v3/suite.yaml \
+  ./benchmarks/core-v3/suite.lock.json \
+  --output results/core-v3.json \
+  --markdown results/core-v3.md
 ```
 
-With four tasks, two agents, and five repetitions this produces 40 planned trial
-cells through the same hardened path.
+With eight tasks, two agents, and five repetitions, the planned matrix contains 80 isolated trials.
 
-## 5. Read the leaderboard
+## 5. Inspect aggregate and task-level evidence
 
 ```bash
 agentbench leaderboard 1 \
   --output results/leaderboard.json \
   --markdown results/leaderboard.md
-
-cat results/leaderboard.md
 ```
 
-Point out:
+Review observed success rate, Wilson intervals, lower-Wilson reliability ranking, runtime summaries, telemetry coverage, task wins/losses/ties, paired success-rate differences, and the descriptive exact sign test.
 
-- observed success rate
-- 95% Wilson success interval
-- lower-Wilson reliability score
-- median runtime
-- token coverage when available
-- pairwise task wins/losses/ties
+Then inspect individual run artifacts to see the setup/agent/test process logs, pre-test Git evidence, provenance, cleanup report, and canonical run manifest.
 
-The ranking methodology is printed in the report rather than hidden in code.
+## 6. Export a portable result bundle
 
-## 6. Inspect the dashboard
+```bash
+agentbench bundle export 1 -o results/experiment-1.zip
+agentbench bundle verify results/experiment-1.zip
+agentbench bundle inspect results/experiment-1.zip
+```
+
+The ZIP is deterministic and content-addressed. Verification rejects traversal, duplicate members, undeclared payloads, size mismatches, digest mismatches, and unsupported schema versions before extraction.
+
+## 7. Inspect the local UI
 
 ```bash
 agentbench serve
 ```
 
-Open:
+Open `http://127.0.0.1:8000` to inspect experiments, aggregate results, and canonical runs through the application-factory FastAPI surface.
 
-```text
-http://127.0.0.1:8000
-```
+## What the demo proves
 
-The experiment view shows aggregate reliability and pairwise outcomes. The run
-view drills down to canonical execution evidence and provenance.
-
-## 7. Inspect one run bundle
-
-Run artifacts are stored under:
-
-```text
-~/.local/share/agentbench/runs/
-```
-
-unless `AGENTBENCH_RUNS_DIR` is overridden.
-
-A bundle preserves the exact task definition, environment/executable provenance,
-agent stdout/stderr, pre-test Git evidence, test logs, cleanup evidence, and final
-manifest.
-
-## 8. Explain what the demo proves
-
-A strong concise explanation is:
-
-> AgentBench makes coding-agent comparisons reproducible at three levels. The
-> corpus is deterministic and Git-pinned; execution is isolated and evidence is
-> captured before tests; repeated results are summarized with explicit
-> uncertainty and a transparent conservative leaderboard.
-
-Do not present the built-in four-task corpus as a universal model benchmark. The
-portfolio contribution is the evaluation system and its integrity guarantees.
+AgentBench is not presented as a claim that eight tasks universally rank coding models. The portfolio contribution is the evaluation system: deterministic corpus materialization, exact-input locking, isolated execution, evidence integrity, explicit uncertainty, extension contracts, portable verified artifacts, and reproducible developer tooling.
