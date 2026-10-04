@@ -85,6 +85,8 @@ class PackRegistry:
             ) from exc
 
     def catalog(self) -> list[dict[str, object]]:
+        from .compatibility import pack_content_sha256, task_content_sha256
+
         rows: list[dict[str, object]] = []
         for pack_id in sorted(self._packs):
             resolved = self._packs[pack_id]
@@ -94,6 +96,8 @@ class PackRegistry:
                     "id": pack.id,
                     "version": pack.version,
                     "provider": resolved.provider_id,
+                    "compatibility_id": pack.effective_compatibility_id,
+                    "content_sha256": pack_content_sha256(pack),
                     "name": pack.name,
                     "description": pack.description,
                     "task_count": len(pack.tasks),
@@ -103,6 +107,7 @@ class PackRegistry:
                             "category": task.category,
                             "difficulty": task.difficulty,
                             "tags": list(task.tags),
+                            "content_sha256": task_content_sha256(task),
                         }
                         for task in pack.tasks
                     ],
