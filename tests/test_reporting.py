@@ -161,7 +161,7 @@ def test_markdown_report_surfaces_v2_corpus_uncertainty_and_reproducibility():
     assert "**Pack:** core-v2 2.0.0" in rendered
     assert "**Success rate:** 80.0%" in rendered
     assert "**95% success interval:**" in rendered
-    assert "**Median runtime:** 2.2 s" in rendered
+    assert "**Median runtime:** 2.20 s" in rendered
     assert "**Token coverage:** 80.0%" in rendered
     assert "## Conservative ranking" in rendered
     assert "agent-a" in rendered
