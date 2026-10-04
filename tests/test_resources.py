@@ -3,7 +3,11 @@ from __future__ import annotations
 from agentbench.benchmark_packs import BenchmarkPack, PackTaskSpec
 from agentbench.benchmark_packs.provider import PackRegistry
 from agentbench.packs import preflight_pack
-from agentbench.resources import HostResourceInspector, ResourceEligibility, TaskRequirements
+from agentbench.resources import (
+    HostResourceInspector,
+    ResourceEligibility,
+    TaskRequirements,
+)
 
 
 def test_task_requirements_normalize_platforms_and_round_trip():
@@ -25,9 +29,7 @@ def test_host_resource_inspector_reports_missing_command():
 
     assert result.eligible is False
     assert "required commands are unavailable" in result.reasons[0]
-    assert (
-        result.observed["commands"]["agentbench-command-that-does-not-exist"] is None
-    )
+    assert result.observed["commands"]["agentbench-command-that-does-not-exist"] is None
 
 
 class FixedInspector:

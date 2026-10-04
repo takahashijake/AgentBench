@@ -406,9 +406,7 @@ class ExperimentService:
         deletion_summary = numeric_summary(deletions)
 
         eligible_planned = planned - len(skipped)
-        success_rate = (
-            len(successful) / eligible_planned if eligible_planned else None
-        )
+        success_rate = len(successful) / eligible_planned if eligible_planned else None
         benchmark_success_rate = (
             len(successful) / len(benchmark_runs) if benchmark_runs else None
         )

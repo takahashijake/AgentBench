@@ -40,9 +40,7 @@ def test_builtin_pack_catalog_has_portfolio_task_coverage():
     assert packs["core-v3"]["provider"] == "agentbench.builtin"
     assert packs["engineering-v4"]["task_count"] == 12
     assert packs["engineering-v4"]["provider"] == "agentbench.builtin"
-    assert all(
-        "requirements" in task for task in packs["engineering-v4"]["tasks"]
-    )
+    assert all("requirements" in task for task in packs["engineering-v4"]["tasks"])
     assert {task["category"] for task in core["tasks"]} == {
         "bugfix",
         "feature",
@@ -252,7 +250,9 @@ else:
     assert len(imported.task_ids) == 2
 
 
-def test_engineering_v4_preflight_and_materialization_include_requirements(tmp_path: Path):
+def test_engineering_v4_preflight_and_materialization_include_requirements(
+    tmp_path: Path,
+):
     preflight = preflight_pack("engineering-v4")
 
     assert preflight["eligible"] is True

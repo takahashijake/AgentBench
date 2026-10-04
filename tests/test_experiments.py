@@ -347,7 +347,9 @@ class RejectingResourceInspector:
         )
 
 
-def test_resource_incompatible_trial_is_skipped_without_penalizing_agent(tmp_path: Path):
+def test_resource_incompatible_trial_is_skipped_without_penalizing_agent(
+    tmp_path: Path,
+):
     repo = tmp_path / "target-resource-skip"
     base_commit = init_git_repo(repo)
     db = make_session()

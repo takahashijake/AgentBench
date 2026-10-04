@@ -194,9 +194,9 @@ class SuiteService:
             repetitions=definition.repetitions,
             stop_on_error=definition.stop_on_error,
             task_requirements={
-                bindings.task_ids[resource_id]: tasks_by_resource.requirements.model_dump(
-                    mode="json"
-                )
+                bindings.task_ids[
+                    resource_id
+                ]: tasks_by_resource.requirements.model_dump(mode="json")
                 for resource_id, tasks_by_resource in {
                     item.id: item for item in loaded.manifest.tasks
                 }.items()
