@@ -81,11 +81,16 @@ def _portable_results(run: Any) -> dict[str, Any]:
     adapter = results.get("adapter_metadata")
     portable_adapter: dict[str, Any] | None = None
     if isinstance(adapter, dict):
+        command_template = adapter.get("command_template")
         portable_adapter = {
             key: value
             for key, value in adapter.items()
-            if key != "workspace_path"
+            if key not in {"workspace_path", "command_template"}
         }
+        if isinstance(command_template, str):
+            portable_adapter["command_template_sha256"] = _sha256_bytes(
+                command_template.encode("utf-8")
+            )
 
     stages: dict[str, Any] = {}
     for name in ("setup", "test"):
@@ -106,8 +111,9 @@ def _portable_results(run: Any) -> dict[str, Any]:
             if "path" not in key.lower()
         }
 
+    artifact_prefix = f"artifacts/run-{int(run.id)}/"
     return {
-        "artifact_bundle_prefix": f"artifacts/run-{int(run.id)}/",
+        "artifact_bundle_prefix": artifact_prefix,
         "adapter_metadata": portable_adapter,
         "provenance": results.get("provenance"),
         "base_commit": results.get("base_commit"),
@@ -115,7 +121,15 @@ def _portable_results(run: Any) -> dict[str, Any]:
         "final_commit": results.get("final_commit"),
         "workspace_status": results.get("workspace_status"),
         "workspace_diff_stats": results.get("workspace_diff_stats"),
-        "git_evidence": results.get("git_evidence"),
+        "git_evidence": {
+            "head": artifact_prefix + "git/head.txt",
+            "status": artifact_prefix + "git/status.txt",
+            "patch": artifact_prefix + "git/diff.patch",
+            "numstat": artifact_prefix + "git/numstat.txt",
+            "commits": artifact_prefix + "git/commits.txt",
+            "untracked_manifest": artifact_prefix + "git/untracked-manifest.json",
+            "untracked_root": artifact_prefix + "git/untracked/",
+        },
         "stages": stages,
         "cleanup": portable_cleanup,
         "internal_error": results.get("internal_error"),
@@ -146,6 +160,40 @@ def _run_payload(run: Any) -> dict[str, Any]:
         "completion_tokens": run.completion_tokens,
         "total_tokens": run.total_tokens,
         "results": _portable_results(run),
+    }
+
+
+def _portable_task_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    prompt = snapshot.get("agent_prompt")
+    return {
+        "id": snapshot.get("id"),
+        "name": snapshot.get("name"),
+        "description": snapshot.get("description"),
+        "base_commit": snapshot.get("base_commit"),
+        "agent_prompt_sha256": (
+            _sha256_bytes(prompt.encode("utf-8"))
+            if isinstance(prompt, str)
+            else None
+        ),
+        "setup_command": snapshot.get("setup_command"),
+        "test_command": snapshot.get("test_command"),
+        "timeout": snapshot.get("timeout"),
+        "enabled": snapshot.get("enabled"),
+    }
+
+
+def _portable_agent_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    command = snapshot.get("command_template")
+    return {
+        "id": snapshot.get("id"),
+        "name": snapshot.get("name"),
+        "description": snapshot.get("description"),
+        "command_template_sha256": (
+            _sha256_bytes(command.encode("utf-8"))
+            if isinstance(command, str)
+            else None
+        ),
+        "enabled": snapshot.get("enabled"),
     }
 
 
@@ -202,8 +250,14 @@ class ResultBundleService:
             "agent_config_ids": [
                 int(value) for value in experiment.agent_config_ids
             ],
-            "task_snapshots": list(experiment.task_snapshots),
-            "agent_snapshots": list(experiment.agent_snapshots),
+            "task_snapshots": [
+                _portable_task_snapshot(snapshot)
+                for snapshot in experiment.task_snapshots
+            ],
+            "agent_snapshots": [
+                _portable_agent_snapshot(snapshot)
+                for snapshot in experiment.agent_snapshots
+            ],
             "trials": trials,
         }
 
