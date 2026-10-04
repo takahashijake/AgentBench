@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from . import __version__
 from .manifests import LoadedSuiteManifest, load_suite_manifest
 from .models.session import close_session, get_session, init_db
+from .packs import get_pack, list_packs, materialize_pack, parse_agent_spec
 from .provenance import (
     build_suite_lock,
     environment_identity,
@@ -20,7 +21,7 @@ from .provenance import (
     verify_suite_lock,
     write_suite_lock,
 )
-from .reporting import render_markdown_report
+from .reporting import render_leaderboard_markdown, render_markdown_report
 from .services.experiment import ExperimentBusyError, ExperimentNotFoundError
 from .services.suite import SuiteService
 
@@ -34,12 +35,16 @@ def _write_json(payload: dict[str, Any], output: Optional[str] = None) -> None:
     print(rendered)
 
 
-def _write_markdown(report: dict[str, Any], output: Optional[str]) -> None:
+def _write_markdown_text(rendered: str, output: Optional[str]) -> None:
     if not output:
         return
     target = Path(output).expanduser().resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(render_markdown_report(report), encoding="utf-8")
+    target.write_text(rendered, encoding="utf-8")
+
+
+def _write_markdown(report: dict[str, Any], output: Optional[str]) -> None:
+    _write_markdown_text(render_markdown_report(report), output)
 
 
 def _validation_payload(loaded: LoadedSuiteManifest) -> dict[str, Any]:
@@ -48,6 +53,11 @@ def _validation_payload(loaded: LoadedSuiteManifest) -> dict[str, Any]:
         "valid": True,
         "schema_version": loaded.manifest.schema_version,
         "suite_id": loaded.manifest.id,
+        "benchmark_pack": (
+            loaded.manifest.benchmark_pack.model_dump(mode="json")
+            if loaded.manifest.benchmark_pack is not None
+            else None
+        ),
         "manifest_path": str(loaded.path),
         "manifest_sha256": loaded.sha256,
         "selected_tasks": [
@@ -57,6 +67,9 @@ def _validation_payload(loaded: LoadedSuiteManifest) -> dict[str, Any]:
                     loaded.resolve_repository_path(tasks_by_id[resource_id])
                 ),
                 "base_commit": tasks_by_id[resource_id].base_commit.lower(),
+                "category": tasks_by_id[resource_id].category,
+                "difficulty": tasks_by_id[resource_id].difficulty,
+                "tags": list(tasks_by_id[resource_id].tags),
             }
             for resource_id in loaded.manifest.selected_task_ids()
         ],
@@ -80,18 +93,21 @@ def _add_report_outputs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--output",
         "-o",
-        help="Optional file path for the machine-readable JSON report.",
+        help="Optional file path for machine-readable JSON.",
     )
     parser.add_argument(
         "--markdown",
-        help="Optional file path for a human-readable Markdown report.",
+        help="Optional file path for human-readable Markdown.",
     )
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="agentbench",
-        description="Reproducible local benchmarking and comparison for coding agents.",
+        description=(
+            "Reproducible local benchmarking, statistical comparison, and "
+            "leaderboards for coding agents."
+        ),
     )
     parser.add_argument(
         "--version",
@@ -99,6 +115,44 @@ def _build_parser() -> argparse.ArgumentParser:
         version=f"AgentBench {__version__}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    pack = subparsers.add_parser(
+        "pack",
+        help="Inspect or materialize built-in deterministic benchmark packs.",
+    )
+    pack_subparsers = pack.add_subparsers(dest="pack_command", required=True)
+    pack_subparsers.add_parser("list", help="List built-in benchmark packs.")
+    pack_show = pack_subparsers.add_parser(
+        "show",
+        help="Show one built-in pack and its tasks.",
+    )
+    pack_show.add_argument("pack_id")
+    pack_materialize = pack_subparsers.add_parser(
+        "materialize",
+        help="Create deterministic Git fixtures and a runnable suite manifest.",
+    )
+    pack_materialize.add_argument("pack_id")
+    pack_materialize.add_argument(
+        "--output",
+        "-o",
+        required=True,
+        help="Empty output directory for the generated pack.",
+    )
+    pack_materialize.add_argument(
+        "--agent",
+        action="append",
+        default=[],
+        help=(
+            "Agent definition in '<id>=<command template>' form. Repeat for "
+            "multiple agents; command templates must contain {prompt}."
+        ),
+    )
+    pack_materialize.add_argument(
+        "--repetitions",
+        type=int,
+        default=5,
+        help="Repeated trials per task/agent cell (default: 5).",
+    )
 
     validate = subparsers.add_parser(
         "validate",
@@ -145,7 +199,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run = subparsers.add_parser(
         "run",
-        help="Resolve provenance, execute a suite, and export results.",
+        help="Resolve provenance, execute a suite, and export V2 analysis.",
     )
     run.add_argument("manifest")
     run.add_argument(
@@ -172,10 +226,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     results = subparsers.add_parser(
         "results",
-        help="Export aggregate results for an existing experiment ID.",
+        help="Export aggregate V2 results for an existing experiment ID.",
     )
     results.add_argument("experiment_id", type=int)
     _add_report_outputs(results)
+
+    leaderboard = subparsers.add_parser(
+        "leaderboard",
+        help="Export the conservative ranking and pairwise task comparison.",
+    )
+    leaderboard.add_argument("experiment_id", type=int)
+    _add_report_outputs(leaderboard)
     return parser
 
 
@@ -220,6 +281,26 @@ def _run_suite(
     return 0
 
 
+def _experiment_report(
+    service: SuiteService,
+    experiment_id: int,
+) -> dict[str, Any]:
+    experiment = service.experiments.get_experiment(experiment_id)
+    summary = service.experiments.aggregate_experiment(experiment_id)
+    return {
+        "report_schema_version": 2,
+        "experiment": {
+            "id": int(experiment.id),
+            "name": experiment.name,
+            "status": experiment.status,
+            "repetitions": experiment.repetitions,
+            "stop_on_error": experiment.stop_on_error,
+            "planned_runs": experiment.planned_runs,
+        },
+        "summary": summary,
+    }
+
+
 def _run_database_command(args: argparse.Namespace) -> int:
     init_db()
     db = get_session()
@@ -236,22 +317,31 @@ def _run_database_command(args: argparse.Namespace) -> int:
             return _run_suite(args, service)
 
         if args.command == "results":
-            experiment = service.experiments.get_experiment(args.experiment_id)
-            summary = service.experiments.aggregate_experiment(args.experiment_id)
-            report = {
-                "report_schema_version": 1,
-                "experiment": {
-                    "id": int(experiment.id),
-                    "name": experiment.name,
-                    "status": experiment.status,
-                    "repetitions": experiment.repetitions,
-                    "stop_on_error": experiment.stop_on_error,
-                    "planned_runs": experiment.planned_runs,
-                },
-                "summary": summary,
-            }
+            report = _experiment_report(service, args.experiment_id)
             _write_markdown(report, args.markdown)
             _write_json(report, args.output)
+            return 0
+
+        if args.command == "leaderboard":
+            report = _experiment_report(service, args.experiment_id)
+            summary = report["summary"]
+            payload = {
+                "analysis_schema_version": summary.get("analysis_schema_version", 2),
+                "experiment": report["experiment"],
+                "ranking": summary.get("ranking"),
+                "pairwise_task_comparison": summary.get(
+                    "pairwise_task_comparison",
+                    [],
+                ),
+            }
+            _write_markdown_text(
+                render_leaderboard_markdown(
+                    summary,
+                    title=f"{report['experiment']['name']} Leaderboard",
+                ),
+                args.markdown,
+            )
+            _write_json(payload, args.output)
             return 0
 
         raise ValueError(f"Unsupported database command: {args.command}")
@@ -259,11 +349,42 @@ def _run_database_command(args: argparse.Namespace) -> int:
         close_session()
 
 
+def _run_pack_command(args: argparse.Namespace) -> int:
+    if args.pack_command == "list":
+        _write_json({"packs": list_packs()})
+        return 0
+
+    if args.pack_command == "show":
+        pack = get_pack(args.pack_id)
+        payload = next(row for row in list_packs() if row["id"] == pack.id)
+        _write_json(payload)
+        return 0
+
+    if args.pack_command == "materialize":
+        agents = [parse_agent_spec(value) for value in args.agent]
+        result = materialize_pack(
+            args.pack_id,
+            args.output,
+            agents=agents,
+            repetitions=args.repetitions,
+        )
+        loaded = load_suite_manifest(result["manifest_path"])
+        result["manifest_sha256"] = loaded.sha256
+        result["schema_version"] = loaded.manifest.schema_version
+        _write_json(result)
+        return 0
+
+    raise ValueError(f"Unsupported pack command: {args.pack_command}")
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     try:
+        if args.command == "pack":
+            return _run_pack_command(args)
+
         if args.command == "validate":
             loaded = load_suite_manifest(args.manifest)
             _write_json(_validation_payload(loaded))

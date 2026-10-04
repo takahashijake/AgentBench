@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from .. import __version__
 
+from ..packs import get_pack, list_packs
 from ..models import (
     AgentConfig as AgentConfigModel,
     BenchmarkRun as BenchmarkRunModel,
@@ -76,6 +77,20 @@ def health():
     return {"status": "ok", "version": __version__}
 
 
+@app.get("/api/packs")
+def api_packs():
+    return {"packs": list_packs()}
+
+
+@app.get("/api/packs/{pack_id}")
+def api_pack(pack_id: str):
+    try:
+        pack = get_pack(pack_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return next(row for row in list_packs() if row["id"] == pack.id)
+
+
 @app.get("/", response_class=HTMLResponse)
 def root(request: Request):
     return templates.TemplateResponse(
@@ -108,6 +123,59 @@ def dashboard(
             "total": total,
             "limit": limit,
             "offset": offset,
+        },
+    )
+
+
+@app.get("/experiments", response_class=HTMLResponse)
+def experiments_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+):
+    experiments = (
+        db.query(ExperimentModel)
+        .order_by(ExperimentModel.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    total = db.query(ExperimentModel).count()
+    return templates.TemplateResponse(
+        "experiments.html",
+        {
+            "request": request,
+            "title": "Experiments",
+            "experiments": experiments,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        },
+    )
+
+
+@app.get("/experiments/{experiment_id}", response_class=HTMLResponse)
+def experiment_detail_page(
+    request: Request,
+    experiment_id: int,
+    db: Session = Depends(get_db),
+):
+    service = ExperimentService(db)
+    try:
+        experiment = service.get_experiment(experiment_id)
+        summary = service.aggregate_experiment(experiment_id)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return templates.TemplateResponse(
+        "experiment_detail.html",
+        {
+            "request": request,
+            "title": f"Experiment #{experiment_id}",
+            "experiment": experiment,
+            "summary": summary,
+            "ranking": (summary.get("ranking") or {}).get("entries", []),
+            "pairwise": summary.get("pairwise_task_comparison", []),
         },
     )
 
@@ -291,6 +359,29 @@ def run_experiment(experiment_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ExperimentBusyError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/experiments/{experiment_id}/leaderboard")
+def get_experiment_leaderboard(
+    experiment_id: int,
+    db: Session = Depends(get_db),
+):
+    service = ExperimentService(db)
+    try:
+        experiment = service.get_experiment(experiment_id)
+        summary = service.aggregate_experiment(experiment_id)
+        return {
+            "analysis_schema_version": summary.get("analysis_schema_version", 2),
+            "experiment_id": experiment.id,
+            "experiment_name": experiment.name,
+            "ranking": summary.get("ranking"),
+            "pairwise_task_comparison": summary.get(
+                "pairwise_task_comparison",
+                [],
+            ),
+        }
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.get(

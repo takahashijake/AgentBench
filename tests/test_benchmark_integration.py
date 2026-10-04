@@ -82,7 +82,7 @@ def test_full_benchmark_isolated_preserves_agent_file_and_cleans_worktree(tmp_pa
     assert (artifact_dir / "manifest.json").is_file()
     assert (artifact_dir / "agent" / "stdout.log").is_file()
     assert (artifact_dir / "provenance.json").is_file()
-    assert run.results["provenance"]["environment"]["agentbench_version"] == "1.0.0"
+    assert run.results["provenance"]["environment"]["agentbench_version"] == "2.0.0"
     assert run.results["provenance"]["agent_executable"]["binary_sha256"]
     assert (artifact_dir / "git" / "untracked" / "created.txt").read_text(
         encoding="utf-8"
@@ -202,3 +202,58 @@ def test_disabled_task_and_agent_are_rejected(tmp_path: Path):
 
     with pytest.raises(ValueError, match="configuration is disabled"):
         service.execute_benchmark(enabled_task)
+
+
+def test_structured_agent_usage_is_persisted_on_run(tmp_path: Path):
+    repo = tmp_path / "target-usage"
+    base_commit = init_git_repo(repo)
+    db = make_session()
+
+    usage_line = (
+        '{"usage":{"input_tokens":42,"output_tokens":17,"total_tokens":59}}'
+    )
+    agent = AgentConfig(
+        name="usage-agent",
+        command_template=shlex.join(
+            [sys.executable, "-c", f"print({usage_line!r})"]
+        ),
+    )
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+
+    task = BenchmarkTask(
+        name="usage task",
+        description="fixture",
+        repository_path=str(repo),
+        base_commit=base_commit,
+        agent_prompt="report structured usage",
+        test_command="",
+        timeout=5,
+        agent_config_id=agent.id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    run = BenchmarkService(
+        db,
+        artifact_root=tmp_path / "artifacts",
+    ).execute_benchmark(task)
+
+    assert run.success is True
+    assert run.prompt_tokens == 42
+    assert run.completion_tokens == 17
+    assert run.total_tokens == 59
+    metadata = run.results["adapter_metadata"]
+    assert metadata["agent_family"] == "shell"
+    assert metadata["usage"]["source"] == "structured_json_output"
+
+
+def test_unittest_output_counts_are_parsed():
+    stdout = ""
+    stderr = "Ran 5 tests in 0.001s\n\nFAILED (failures=1, errors=1)"
+    passed, failed = BenchmarkService._parse_test_counts(stdout, stderr)
+
+    assert passed == 3
+    assert failed == 2

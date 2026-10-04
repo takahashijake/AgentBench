@@ -14,6 +14,12 @@ from ..models.database import (
     Experiment,
     ExperimentTrial,
 )
+from ..statistics import (
+    build_agent_ranking,
+    build_pairwise_task_comparison,
+    numeric_summary,
+    wilson_interval,
+)
 from ..timeutils import utc_now
 from .benchmark import BenchmarkService
 
@@ -335,6 +341,10 @@ class ExperimentService:
         successful = [run for run in benchmark_runs if run.success is True]
         failed = [run for run in benchmark_runs if run.success is False]
         errors = [trial for trial in trials if trial.status == "error"]
+        terminal_trials = sum(
+            trial.status in ExperimentService.TERMINAL_TRIAL_STATUSES
+            for trial in trials
+        )
 
         durations = [
             float(run.duration_seconds)
@@ -346,70 +356,73 @@ class ExperimentService:
             for run in benchmark_runs
             if run.total_tokens is not None
         ]
+        files_changed = [int(run.files_changed or 0) for run in benchmark_runs]
+        insertions = [int(run.insertions or 0) for run in benchmark_runs]
+        deletions = [int(run.deletions or 0) for run in benchmark_runs]
 
-        def average(values: list[float | int]) -> Optional[float]:
-            return (sum(values) / len(values)) if values else None
+        runtime_summary = numeric_summary(durations)
+        token_summary = numeric_summary(measured_tokens)
+        file_summary = numeric_summary(files_changed)
+        insertion_summary = numeric_summary(insertions)
+        deletion_summary = numeric_summary(deletions)
+
+        success_rate = (len(successful) / planned) if planned else None
+        benchmark_success_rate = (
+            len(successful) / len(benchmark_runs) if benchmark_runs else None
+        )
 
         return {
             "planned_runs": planned,
-            "terminal_trials": sum(
-                trial.status in ExperimentService.TERMINAL_TRIAL_STATUSES
-                for trial in trials
-            ),
-            "completion_rate": (
-                sum(
-                    trial.status in ExperimentService.TERMINAL_TRIAL_STATUSES
-                    for trial in trials
-                )
-                / planned
-                if planned
-                else None
-            ),
+            "terminal_trials": terminal_trials,
+            "completion_rate": (terminal_trials / planned) if planned else None,
             "benchmark_runs": len(benchmark_runs),
             "orchestration_errors": len(errors),
             "successful_runs": len(successful),
             "failed_runs": len(failed),
-            "success_rate": (len(successful) / planned) if planned else None,
-            "benchmark_success_rate": (
-                len(successful) / len(benchmark_runs) if benchmark_runs else None
-            ),
+            "success_rate": success_rate,
+            "benchmark_success_rate": benchmark_success_rate,
             "tests_passed": sum(int(run.test_passed or 0) for run in benchmark_runs),
             "tests_failed": sum(int(run.test_failed or 0) for run in benchmark_runs),
-            "runtime_seconds": {
-                "total": sum(durations),
-                "average": average(durations),
-                "minimum": min(durations) if durations else None,
-                "maximum": max(durations) if durations else None,
-            },
+            "runtime_seconds": runtime_summary,
             "tokens": {
-                "measurements": len(measured_tokens),
-                "total": sum(measured_tokens),
-                "average": average(measured_tokens),
+                **token_summary,
                 "prompt_total": sum(
                     int(run.prompt_tokens or 0) for run in benchmark_runs
                 ),
                 "completion_total": sum(
                     int(run.completion_tokens or 0) for run in benchmark_runs
                 ),
+                "coverage_rate": (
+                    len(measured_tokens) / len(benchmark_runs)
+                    if benchmark_runs
+                    else None
+                ),
             },
             "changes": {
-                "files_changed_total": sum(
-                    int(run.files_changed or 0) for run in benchmark_runs
+                "files_changed_total": sum(files_changed),
+                "files_changed_average": file_summary["average"],
+                "insertions_total": sum(insertions),
+                "insertions_average": insertion_summary["average"],
+                "deletions_total": sum(deletions),
+                "deletions_average": deletion_summary["average"],
+                "files_changed": file_summary,
+                "insertions": insertion_summary,
+                "deletions": deletion_summary,
+            },
+            "statistics": {
+                "success_rate_confidence_interval_95": wilson_interval(
+                    len(successful),
+                    planned,
                 ),
-                "files_changed_average": average(
-                    [int(run.files_changed or 0) for run in benchmark_runs]
+                "benchmark_success_rate_confidence_interval_95": wilson_interval(
+                    len(successful),
+                    len(benchmark_runs),
                 ),
-                "insertions_total": sum(
-                    int(run.insertions or 0) for run in benchmark_runs
-                ),
-                "insertions_average": average(
-                    [int(run.insertions or 0) for run in benchmark_runs]
-                ),
-                "deletions_total": sum(
-                    int(run.deletions or 0) for run in benchmark_runs
-                ),
-                "deletions_average": average(
-                    [int(run.deletions or 0) for run in benchmark_runs]
+                "note": (
+                    "Proportion intervals use Wilson score. Runtime/token/change "
+                    "mean intervals use Student-t when at least two measurements "
+                    "exist. These are descriptive uncertainty estimates, not "
+                    "independence or significance claims."
                 ),
             },
         }
@@ -434,53 +447,64 @@ class ExperimentService:
         agents = self._snapshots_by_id(list(experiment.agent_snapshots))
         tasks = self._snapshots_by_id(list(experiment.task_snapshots))
 
+        by_agent_rows = [
+            {
+                "agent_config_id": agent_id,
+                "agent_name": (
+                    agents[agent_id]["name"]
+                    if agent_id in agents
+                    else f"agent-{agent_id}"
+                ),
+                "metrics": self._aggregate_trials(by_agent[agent_id]),
+            }
+            for agent_id in experiment.agent_config_ids
+        ]
+        by_task_rows = [
+            {
+                "task_id": task_id,
+                "task_name": (
+                    tasks[task_id]["name"]
+                    if task_id in tasks
+                    else f"task-{task_id}"
+                ),
+                "metrics": self._aggregate_trials(by_task[task_id]),
+            }
+            for task_id in experiment.task_ids
+        ]
+        by_cell_rows = [
+            {
+                "task_id": task_id,
+                "task_name": (
+                    tasks[task_id]["name"]
+                    if task_id in tasks
+                    else f"task-{task_id}"
+                ),
+                "agent_config_id": agent_id,
+                "agent_name": (
+                    agents[agent_id]["name"]
+                    if agent_id in agents
+                    else f"agent-{agent_id}"
+                ),
+                "metrics": self._aggregate_trials(by_cell[(task_id, agent_id)]),
+            }
+            for task_id in experiment.task_ids
+            for agent_id in experiment.agent_config_ids
+        ]
+
         return {
+            "analysis_schema_version": 2,
             "experiment_id": experiment.id,
             "name": experiment.name,
             "status": experiment.status,
             "repetitions": experiment.repetitions,
             "overall": self._aggregate_trials(trials),
-            "by_agent": [
-                {
-                    "agent_config_id": agent_id,
-                    "agent_name": (
-                        agents[agent_id]["name"]
-                        if agent_id in agents
-                        else f"agent-{agent_id}"
-                    ),
-                    "metrics": self._aggregate_trials(by_agent[agent_id]),
-                }
-                for agent_id in experiment.agent_config_ids
-            ],
-            "by_task": [
-                {
-                    "task_id": task_id,
-                    "task_name": (
-                        tasks[task_id]["name"]
-                        if task_id in tasks
-                        else f"task-{task_id}"
-                    ),
-                    "metrics": self._aggregate_trials(by_task[task_id]),
-                }
-                for task_id in experiment.task_ids
-            ],
-            "by_cell": [
-                {
-                    "task_id": task_id,
-                    "task_name": (
-                        tasks[task_id]["name"]
-                        if task_id in tasks
-                        else f"task-{task_id}"
-                    ),
-                    "agent_config_id": agent_id,
-                    "agent_name": (
-                        agents[agent_id]["name"]
-                        if agent_id in agents
-                        else f"agent-{agent_id}"
-                    ),
-                    "metrics": self._aggregate_trials(by_cell[(task_id, agent_id)]),
-                }
-                for task_id in experiment.task_ids
-                for agent_id in experiment.agent_config_ids
-            ],
+            "by_agent": by_agent_rows,
+            "by_task": by_task_rows,
+            "by_cell": by_cell_rows,
+            "ranking": build_agent_ranking(by_agent_rows),
+            "pairwise_task_comparison": build_pairwise_task_comparison(
+                by_cell_rows,
+                [int(agent_id) for agent_id in experiment.agent_config_ids],
+            ),
         }
+

@@ -164,9 +164,25 @@ class BenchmarkService:
         output = f"{stdout}\n{stderr}"
         passed_matches = re.findall(r"(\d+)\s+passed", output)
         failed_matches = re.findall(r"(\d+)\s+failed", output)
-        passed = int(passed_matches[-1]) if passed_matches else 0
-        failed = int(failed_matches[-1]) if failed_matches else 0
-        return passed, failed
+        if passed_matches or failed_matches:
+            passed = int(passed_matches[-1]) if passed_matches else 0
+            failed = int(failed_matches[-1]) if failed_matches else 0
+            return passed, failed
+
+        # Python unittest reports "Ran N tests" rather than pytest-style counts.
+        ran_matches = re.findall(r"Ran\s+(\d+)\s+tests?", output)
+        if not ran_matches:
+            return 0, 0
+        total = int(ran_matches[-1])
+        failures = re.findall(r"failures=(\d+)", output)
+        errors = re.findall(r"errors=(\d+)", output)
+        failed = (
+            (int(failures[-1]) if failures else 0)
+            + (int(errors[-1]) if errors else 0)
+        )
+        if "OK" in output:
+            failed = 0
+        return max(total - failed, 0), failed
 
     def _run_tests_detailed(
         self,
@@ -471,9 +487,12 @@ class BenchmarkService:
             else None
         )
 
+        adapter_metadata = adapter.collect_metadata()
+        usage_metadata = adapter_metadata.get("usage", {}) or {}
+
         result_payload: Dict[str, Any] = {
             "artifact_directory": str(artifact_store.root),
-            "adapter_metadata": adapter.collect_metadata(),
+            "adapter_metadata": adapter_metadata,
             "provenance": run_provenance,
             "repository_head_at_start": original_commit,
             "base_commit": task.base_commit,
@@ -556,6 +575,9 @@ class BenchmarkService:
             stdout_path=stdout_path,
             stderr_path=stderr_path,
             results=result_payload,
+            prompt_tokens=usage_metadata.get("prompt_tokens"),
+            completion_tokens=usage_metadata.get("completion_tokens"),
+            total_tokens=usage_metadata.get("total_tokens"),
         )
 
         self.db.add(run)

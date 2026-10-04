@@ -186,6 +186,9 @@ def build_suite_lock(loaded: LoadedSuiteManifest) -> dict[str, Any]:
                 "setup_command": task.setup_command,
                 "test_command": task.test_command,
                 "timeout": task.timeout,
+                "category": task.category,
+                "difficulty": task.difficulty,
+                "tags": list(task.tags),
             }
         )
 
@@ -204,7 +207,13 @@ def build_suite_lock(loaded: LoadedSuiteManifest) -> dict[str, Any]:
         "lock_schema_version": LOCK_SCHEMA_VERSION,
         "suite": {
             "id": loaded.manifest.id,
+            "schema_version": loaded.manifest.schema_version,
             "manifest_sha256": loaded.sha256,
+            "benchmark_pack": (
+                loaded.manifest.benchmark_pack.model_dump(mode="json")
+                if loaded.manifest.benchmark_pack is not None
+                else None
+            ),
         },
         "tasks": tasks,
         "agents": agents,
