@@ -164,9 +164,25 @@ class BenchmarkService:
         output = f"{stdout}\n{stderr}"
         passed_matches = re.findall(r"(\d+)\s+passed", output)
         failed_matches = re.findall(r"(\d+)\s+failed", output)
-        passed = int(passed_matches[-1]) if passed_matches else 0
-        failed = int(failed_matches[-1]) if failed_matches else 0
-        return passed, failed
+        if passed_matches or failed_matches:
+            passed = int(passed_matches[-1]) if passed_matches else 0
+            failed = int(failed_matches[-1]) if failed_matches else 0
+            return passed, failed
+
+        # Python unittest reports "Ran N tests" rather than pytest-style counts.
+        ran_matches = re.findall(r"Ran\s+(\d+)\s+tests?", output)
+        if not ran_matches:
+            return 0, 0
+        total = int(ran_matches[-1])
+        failures = re.findall(r"failures=(\d+)", output)
+        errors = re.findall(r"errors=(\d+)", output)
+        failed = (
+            (int(failures[-1]) if failures else 0)
+            + (int(errors[-1]) if errors else 0)
+        )
+        if "OK" in output:
+            failed = 0
+        return max(total - failed, 0), failed
 
     def _run_tests_detailed(
         self,
