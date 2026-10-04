@@ -186,6 +186,12 @@ def test_matrix_executes_two_by_two_by_two_and_is_idempotent(tmp_path: Path):
     assert all(row["metrics"]["planned_runs"] == 4 for row in summary["by_task"])
     assert all(row["metrics"]["planned_runs"] == 2 for row in summary["by_cell"])
     assert all(row["metrics"]["success_rate"] == 1 for row in summary["by_cell"])
+    assert summary["analysis_schema_version"] == 2
+    assert summary["overall"]["statistics"]["success_rate_confidence_interval_95"]
+    assert summary["overall"]["runtime_seconds"]["median"] is not None
+    assert len(summary["ranking"]["entries"]) == 2
+    assert [row["rank"] for row in summary["ranking"]["entries"]] == [1, 2]
+    assert len(summary["pairwise_task_comparison"]) == 1
 
     first_completed_at = completed.completed_at
     service.execute_experiment(experiment.id)
