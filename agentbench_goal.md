@@ -2,67 +2,78 @@
 
 Continue developing AgentBench into a trustworthy local coding-agent benchmarking and comparison platform.
 
-## Current architecture
-
-Read \`ARCHITECTURE.md\` before editing. The benchmark core is intentionally split into:
-
-- API: HTTP/database boundary only
-- services/benchmark.py: lifecycle orchestration
-- adapters/: agent-specific invocation
-- execution/: bounded process management
-- utils/git.py: disposable worktree lifecycle
-- evidence.py: post-agent Git/untracked evidence
-- artifacts.py: unique write-once run bundles
-- models/schemas: persistence contracts
-
-Do not collapse these boundaries without a concrete reason.
-
 ## First action in every fresh session
 
-Run the deterministic QA suite:
+Read `ARCHITECTURE.md`, then run:
 
-\`\`\`bash
+```bash
 PYTHONPATH=src pytest -q
-\`\`\`
+```
 
-If it fails, fix the benchmark-integrity regression before adding features.
+If QA fails, repair the regression before adding features.
 
-## Integrity invariants
+## Current completed foundations
 
-Preserve these behaviors:
+### Single-run benchmark integrity
 
-- isolated detached worktree at the task's exact base commit
-- no run artifacts written into the benchmark worktree
-- safe argv-based prompt injection for coding-agent commands
-- bounded setup, agent, and test execution
+The benchmark core already provides:
+
+- detached worktree isolation at an exact base commit
+- safe argv-based agent prompt invocation
+- bounded setup/agent/test execution
 - process-tree termination on timeout
-- Git evidence captured before tests
-- tracked and non-ignored untracked agent changes preserved before cleanup
-- unique write-once artifact bundle per run
-- forced dirty-worktree cleanup and Git metadata pruning
-- ORM models kept distinct from Pydantic API schemas
+- pre-test Git evidence capture
+- tracked + non-ignored untracked change preservation
+- unique write-once artifact bundles
+- forced dirty-worktree cleanup
+- deterministic integration coverage
+
+### Experiment matrix / comparison engine
+
+`ExperimentService` now provides:
+
+```text
+tasks × agents × repetitions
+```
+
+with persisted `ExperimentTrial` cells, execution through the existing `BenchmarkService`, idempotent handling of terminal trials, and aggregate overall/per-agent/per-task metrics.
+
+Do not duplicate either execution layer.
 
 ## Next major milestone
 
-Once the QA suite is green, build the experiment matrix / agent comparison engine:
+Build a **versionable benchmark-suite/task manifest + CLI**.
 
-\`\`\`text
-tasks × agents × repetitions
-\`\`\`
+The goal is to make a complete experiment reproducible from files and commands instead of manually creating database rows.
 
-Aggregate at least:
+A strong implementation should include:
 
-- success rate
-- tests passed/failed
-- runtime
-- token usage when available
-- files changed
-- insertions/deletions
+- a documented suite manifest format
+- deterministic loading/validation
+- task definitions with repository path/base commit/prompt/setup/test/timeout
+- agent references or definitions
+- experiment repetitions and stop-on-error policy
+- CLI commands to validate/import/run a suite
+- machine-readable JSON result export
+- stable identifiers so repeated imports do not silently duplicate suites/tasks/agents
+- tests proving manifest round-tripping and deterministic experiment creation
 
-Build this on top of the existing single-run \`BenchmarkService\`; do not duplicate execution logic.
+The CLI must call existing services. It must not reimplement benchmark or experiment execution.
 
-Do not prioritize dashboards, cloud deployment, authentication, distributed workers, or LLM-as-a-judge ahead of the experiment foundation.
+## Preserve these boundaries
 
-Each fresh session should inspect the current state, implement one bounded high-value slice, run the relevant tests, fix regressions, and leave one concise next objective.
+- API: transport only
+- services/experiment.py: matrix planning/execution/aggregation
+- services/benchmark.py: one benchmark run
+- adapters/: agent invocation
+- execution/: process lifecycle
+- utils/git.py: worktree lifecycle
+- evidence.py: benchmark evidence
+- artifacts.py: immutable artifacts
+- models/schemas: persistence
+
+Do not prioritize dashboards, cloud deployment, authentication, distributed workers, or LLM-as-a-judge ahead of reproducible suite/CLI workflows.
+
+Each fresh Qwen session should implement one bounded high-value slice, run tests, fix regressions, and leave one concise next objective.
 
 Do not commit or push from Qwen sessions.

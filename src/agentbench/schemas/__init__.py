@@ -150,3 +150,66 @@ class BenchmarkRunResult(BaseModel):
     stdout_path: Optional[str] = None
     stderr_path: Optional[str] = None
     results: Optional[Dict[str, Any]] = None
+
+
+class ExperimentCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = None
+    task_ids: List[int] = Field(..., min_length=1)
+    agent_config_ids: List[int] = Field(..., min_length=1)
+    repetitions: int = Field(default=1, ge=1, le=100)
+    stop_on_error: bool = False
+
+
+class ExperimentTrial(BaseModel):
+    id: int
+    experiment_id: int
+    task_id: int
+    agent_config_id: int
+    repetition: int
+    ordinal: int
+    status: str
+    benchmark_run_id: Optional[int] = None
+    error: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class Experiment(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    repetitions: int
+    stop_on_error: bool
+    status: str
+    task_ids: List[int]
+    agent_config_ids: List[int]
+    task_snapshots: List[Dict[str, Any]]
+    agent_snapshots: List[Dict[str, Any]]
+    planned_runs: int
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ExperimentDetail(Experiment):
+    trials: List[ExperimentTrial] = Field(default_factory=list)
+
+
+class ExperimentList(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: List[Experiment]
+
+
+class ExperimentResults(BaseModel):
+    experiment: ExperimentDetail
+    summary: Dict[str, Any]

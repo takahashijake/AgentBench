@@ -2,7 +2,18 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -85,7 +96,6 @@ class BenchmarkRun(Base):
 
     stdout_path = Column(String(1024), nullable=True)
     stderr_path = Column(String(1024), nullable=True)
-
     results = Column(JSON, nullable=True)
 
     prompt_tokens = Column(Integer, nullable=True)
@@ -94,3 +104,76 @@ class BenchmarkRun(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Experiment(Base):
+    """Persisted tasks × agents × repetitions benchmark plan."""
+
+    __tablename__ = "experiments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    repetitions = Column(Integer, nullable=False, default=1)
+    stop_on_error = Column(Boolean, nullable=False, default=False)
+    status = Column(String(64), nullable=False, default="pending")
+    task_ids = Column(JSON, nullable=False)
+    agent_config_ids = Column(JSON, nullable=False)
+    task_snapshots = Column(JSON, nullable=False)
+    agent_snapshots = Column(JSON, nullable=False)
+    planned_runs = Column(Integer, nullable=False, default=0)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    trials = relationship(
+        "ExperimentTrial",
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        order_by="ExperimentTrial.ordinal",
+    )
+
+
+class ExperimentTrial(Base):
+    """One planned cell in an experiment matrix."""
+
+    __tablename__ = "experiment_trials"
+    __table_args__ = (
+        UniqueConstraint(
+            "experiment_id",
+            "task_id",
+            "agent_config_id",
+            "repetition",
+            name="uq_experiment_trial_cell",
+        ),
+        UniqueConstraint(
+            "experiment_id",
+            "ordinal",
+            name="uq_experiment_trial_ordinal",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    experiment_id = Column(Integer, ForeignKey("experiments.id"), nullable=False, index=True)
+    task_id = Column(Integer, ForeignKey("benchmark_tasks.id"), nullable=False)
+    agent_config_id = Column(Integer, ForeignKey("agent_configs.id"), nullable=False)
+    repetition = Column(Integer, nullable=False)
+    ordinal = Column(Integer, nullable=False)
+    status = Column(String(64), nullable=False, default="planned")
+    benchmark_run_id = Column(
+        Integer,
+        ForeignKey("benchmark_runs.id"),
+        nullable=True,
+        unique=True,
+    )
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    experiment = relationship("Experiment", back_populates="trials")
+    task = relationship("BenchmarkTask")
+    agent_config = relationship("AgentConfig")
+    benchmark_run = relationship("BenchmarkRun")

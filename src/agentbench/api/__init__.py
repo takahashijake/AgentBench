@@ -13,6 +13,7 @@ from ..models import (
     AgentConfig as AgentConfigModel,
     BenchmarkRun as BenchmarkRunModel,
     BenchmarkTask as BenchmarkTaskModel,
+    Experiment as ExperimentModel,
     get_session,
     init_db,
 )
@@ -24,8 +25,17 @@ from ..schemas import (
     BenchmarkRunList,
     BenchmarkTask as BenchmarkTaskSchema,
     BenchmarkTaskCreate,
+    ExperimentCreate,
+    ExperimentDetail,
+    ExperimentList,
+    ExperimentResults,
 )
 from ..services.benchmark import BenchmarkService
+from ..services.experiment import (
+    ExperimentBusyError,
+    ExperimentNotFoundError,
+    ExperimentService,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 STATIC_DIR = PROJECT_ROOT / "static"
@@ -41,7 +51,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AgentBench Local",
     description="A local-first benchmarking platform for coding agents",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -82,7 +92,6 @@ def dashboard(
         .all()
     )
     total = db.query(BenchmarkRunModel).count()
-
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -97,15 +106,10 @@ def dashboard(
 
 
 @app.get("/runs/{run_id}", response_class=HTMLResponse)
-def run_detail(
-    request: Request,
-    run_id: int,
-    db: Session = Depends(get_db),
-):
+def run_detail(request: Request, run_id: int, db: Session = Depends(get_db)):
     run = db.query(BenchmarkRunModel).filter(BenchmarkRunModel.id == run_id).first()
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-
     task = (
         db.query(BenchmarkTaskModel)
         .filter(BenchmarkTaskModel.id == run.task_id)
@@ -128,10 +132,7 @@ def list_agents(db: Session = Depends(get_db)):
 
 
 @app.post("/api/agents", response_model=AgentConfigSchema, status_code=201)
-def create_agent(
-    agent: AgentConfigCreate,
-    db: Session = Depends(get_db),
-):
+def create_agent(agent: AgentConfigCreate, db: Session = Depends(get_db)):
     db_agent = AgentConfigModel(**agent.model_dump())
     db.add(db_agent)
     db.commit()
@@ -140,19 +141,12 @@ def create_agent(
 
 
 @app.get("/api/tasks", response_model=list[BenchmarkTaskSchema])
-def list_tasks(
-    db: Session = Depends(get_db),
-    limit: int = 100,
-    offset: int = 0,
-):
+def list_tasks(db: Session = Depends(get_db), limit: int = 100, offset: int = 0):
     return db.query(BenchmarkTaskModel).offset(offset).limit(limit).all()
 
 
 @app.post("/api/tasks", response_model=BenchmarkTaskSchema, status_code=201)
-def create_task(
-    task: BenchmarkTaskCreate,
-    db: Session = Depends(get_db),
-):
+def create_task(task: BenchmarkTaskCreate, db: Session = Depends(get_db)):
     db_task = BenchmarkTaskModel(**task.model_dump())
     db.add(db_task)
     db.commit()
@@ -161,11 +155,7 @@ def create_task(
 
 
 @app.get("/api/runs", response_model=BenchmarkRunList)
-def list_runs(
-    db: Session = Depends(get_db),
-    limit: int = 20,
-    offset: int = 0,
-):
+def list_runs(db: Session = Depends(get_db), limit: int = 20, offset: int = 0):
     total = db.query(BenchmarkRunModel).count()
     runs = (
         db.query(BenchmarkRunModel)
@@ -178,10 +168,7 @@ def list_runs(
 
 
 @app.post("/api/runs", response_model=BenchmarkRunSchema, status_code=201)
-def create_run(
-    run: BenchmarkRunCreate,
-    db: Session = Depends(get_db),
-):
+def create_run(run: BenchmarkRunCreate, db: Session = Depends(get_db)):
     task = (
         db.query(BenchmarkTaskModel)
         .filter(BenchmarkTaskModel.id == run.task_id)
@@ -219,7 +206,6 @@ def get_run_stdout(run_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Run not found")
     if not run.stdout_path:
         raise HTTPException(status_code=404, detail="Stdout not available")
-
     try:
         return {"content": Path(run.stdout_path).read_text(encoding="utf-8")}
     except FileNotFoundError as exc:
@@ -233,8 +219,84 @@ def get_run_stderr(run_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Run not found")
     if not run.stderr_path:
         raise HTTPException(status_code=404, detail="Stderr not available")
-
     try:
         return {"content": Path(run.stderr_path).read_text(encoding="utf-8")}
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Stderr file not found") from exc
+
+
+@app.get("/api/experiments", response_model=ExperimentList)
+def list_experiments(
+    db: Session = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+):
+    total = db.query(ExperimentModel).count()
+    experiments = (
+        db.query(ExperimentModel)
+        .order_by(ExperimentModel.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return ExperimentList(
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=experiments,
+    )
+
+
+@app.post("/api/experiments", response_model=ExperimentDetail, status_code=201)
+def create_experiment(
+    request: ExperimentCreate,
+    db: Session = Depends(get_db),
+):
+    service = ExperimentService(db)
+    try:
+        return service.create_experiment(**request.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/experiments/{experiment_id}", response_model=ExperimentDetail)
+def get_experiment(experiment_id: int, db: Session = Depends(get_db)):
+    service = ExperimentService(db)
+    try:
+        return service.get_experiment(experiment_id)
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post(
+    "/api/experiments/{experiment_id}/run",
+    response_model=ExperimentResults,
+)
+def run_experiment(experiment_id: int, db: Session = Depends(get_db)):
+    service = ExperimentService(db)
+    try:
+        experiment = service.execute_experiment(experiment_id)
+        return ExperimentResults(
+            experiment=experiment,
+            summary=service.aggregate_experiment(experiment_id),
+        )
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ExperimentBusyError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get(
+    "/api/experiments/{experiment_id}/results",
+    response_model=ExperimentResults,
+)
+def get_experiment_results(experiment_id: int, db: Session = Depends(get_db)):
+    service = ExperimentService(db)
+    try:
+        experiment = service.get_experiment(experiment_id)
+        return ExperimentResults(
+            experiment=experiment,
+            summary=service.aggregate_experiment(experiment_id),
+        )
+    except ExperimentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
