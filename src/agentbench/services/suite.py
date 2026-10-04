@@ -221,13 +221,19 @@ class SuiteService:
         tasks_by_id = {item.id: item for item in loaded.manifest.tasks}
         agents_by_id = {item.id: item for item in loaded.manifest.agents}
         return {
-            "report_schema_version": 1,
+            "report_schema_version": 2,
             "suite": {
                 "id": loaded.manifest.id,
                 "name": loaded.manifest.name,
                 "description": loaded.manifest.description,
                 "manifest_path": str(loaded.path),
                 "manifest_sha256": loaded.sha256,
+                "schema_version": loaded.manifest.schema_version,
+                "benchmark_pack": (
+                    loaded.manifest.benchmark_pack.model_dump(mode="json")
+                    if loaded.manifest.benchmark_pack is not None
+                    else None
+                ),
             },
             "experiment": {
                 "id": int(experiment.id),
@@ -247,6 +253,9 @@ class SuiteService:
                             loaded.resolve_repository_path(tasks_by_id[resource_id])
                         ),
                         "base_commit": tasks_by_id[resource_id].base_commit.lower(),
+                        "category": tasks_by_id[resource_id].category,
+                        "difficulty": tasks_by_id[resource_id].difficulty,
+                        "tags": list(tasks_by_id[resource_id].tags),
                     }
                     for resource_id in loaded.manifest.selected_task_ids()
                 ],
