@@ -54,3 +54,10 @@ def test_result_bundle_module_does_not_depend_on_cli_or_api():
 
     assert not any(".cli" in name for name in imports)
     assert not any(".api" in name for name in imports)
+
+
+def test_local_parallel_executor_owns_worker_sessions_not_global_scoped_session():
+    imports = imported_modules(SRC / "services" / "local_executor.py")
+
+    assert not any(name.endswith("models.session") for name in imports)
+    assert "sqlalchemy.orm" in imports
