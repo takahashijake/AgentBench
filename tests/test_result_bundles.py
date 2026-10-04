@@ -151,6 +151,12 @@ def test_result_bundle_is_deterministic_and_verifiable(tmp_path: Path):
     assert verified.identity_sha256 == one["identity_sha256"]
     assert verified.report["report_schema_version"] == 3
     assert verified.report["experiment"]["id"] == experiment.id
+    with zipfile.ZipFile(first, "r") as archive:
+        experiment_doc = json.loads(archive.read("experiment.json"))
+    serialized = json.dumps(experiment_doc)
+    assert str(tmp_path) not in serialized
+    run_results = experiment_doc["trials"][0]["benchmark_run"]["results"]
+    assert run_results["artifact_bundle_prefix"] == "artifacts/run-1/"
 
     inspected = inspect_result_bundle(first)
     assert inspected["valid"] is True
