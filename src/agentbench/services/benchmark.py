@@ -12,6 +12,13 @@ from sqlalchemy.orm import Session
 
 from ..adapters.base import AgentAdapter, ShellAgentAdapter
 from ..models.database import BenchmarkRun, BenchmarkTask, AgentConfig
+from ..utils.git import (
+    get_git_commit,
+    get_git_status,
+    get_git_diff_stats,
+    create_git_worktree,
+    cleanup_git_worktree,
+)
 
 
 class BenchmarkService:
@@ -131,13 +138,43 @@ class BenchmarkService:
             deletions = int(del_match.group(1))
         
         return files_changed, insertions, deletions, diff_stats
-    
-    def run_tests(self, repo_path: Path, test_command: str) -> Tuple[bool, int, int, Optional[str]]:
+
+    def execute_setup_command(self, workspace_path: Path, setup_command: str) -> Tuple[bool, str, str]:
+        """Execute the task's setup command in the workspace.
+
+        Args:
+            workspace_path: Path to the isolated workspace.
+            setup_command: The setup command to execute.
+
+        Returns:
+            Tuple of (success, stdout, stderr)
+        """
+        if not setup_command:
+            return True, "", ""
+
+        try:
+            result = subprocess.run(
+                setup_command,
+                cwd=workspace_path,
+                capture_output=True,
+                text=True,
+                shell=True,
+                timeout=300  # 5 minute timeout for setup
+            )
+
+            success = result.returncode == 0
+            return success, result.stdout, result.stderr
+
+        except subprocess.TimeoutExpired:
+            return False, "", "Setup command timed out after 300 seconds"
+
+    def run_tests(self, repo_path: Path, test_command: str, cwd: Optional[Path] = None) -> Tuple[bool, int, int, Optional[str]]:
         """Run tests on the repository.
         
         Args:
-            repo_path: Path to the repository.
+            repo_path: Path to the repository (used for getting test framework config).
             test_command: The test command to execute.
+            cwd: Working directory to run tests in. Defaults to repo_path.
             
         Returns:
             Tuple of (passed, passed_count, failed_count, error_message)
@@ -145,7 +182,7 @@ class BenchmarkService:
         try:
             result = subprocess.run(
                 test_command,
-                cwd=repo_path,
+                cwd=cwd or repo_path,
                 capture_output=True,
                 text=True,
                 shell=True
@@ -181,117 +218,180 @@ class BenchmarkService:
         model_name: Optional[str] = None
     ) -> BenchmarkRun:
         """Execute a benchmark task and record results.
-        
+
         Args:
             task: The benchmark task to execute.
             agent_config_id: ID of the agent configuration to use.
             agent_name: Name of the agent (optional override).
             model_name: Name of the model (optional).
-            
+
         Returns:
             The completed benchmark run record.
         """
         started_at = datetime.utcnow()
-        
+
         # Create agent adapter
         adapter = self.create_agent_adapter(agent_config_id)
         if agent_name:
             adapter.name = agent_name
         if model_name:
             adapter.model = model_name
-        
+
         # Verify repository
         repo_path = Path(task.repository_path)
         current_commit = self.verify_repository(repo_path)
-        
-        # Prepare adapter
-        adapter.prepare(repo_path, current_commit)
-        
-        # Create temporary files for output
-        import tempfile
-        import os
-        
-        stdout_fd, stdout_path = tempfile.mkstemp(
-            prefix="agentbench_run_", suffix=".stdout.log"
-        )
-        stderr_fd, stderr_path = tempfile.mkstemp(
-            prefix="agentbench_run_", suffix=".stderr.log"
-        )
-        os.close(stdout_fd)
-        os.close(stderr_fd)
-        
-        adapter.set_output_paths(Path(stdout_path), Path(stderr_path))
-        
-        # Run the agent
-        exit_code, stdout, stderr = adapter.run_task(
-            task.agent_prompt,
-            task.timeout
-        )
-        
-        ended_at = datetime.utcnow()
-        duration = (ended_at - started_at).total_seconds()
-        
-        # Run tests
-        tests_passed = False
-        test_passed_count = 0
-        test_failed_count = 0
-        test_error = None
-        
-        if task.test_command:
-            tests_passed, test_passed_count, test_failed_count, test_error = self.run_tests(
-                repo_path,
-                task.test_command
+
+        # Create isolated workspace using git worktree
+        worktree_path = create_git_worktree(repo_path, task.base_commit)
+
+        try:
+            # Prepare adapter with workspace path
+            adapter.prepare(worktree_path, task.base_commit)
+
+            # Create run directory for persistent logs
+            runs_dir = repo_path / "runs" / str(task.id)
+            runs_dir.mkdir(parents=True, exist_ok=True)
+
+            stdout_path = runs_dir / "agent.stdout.log"
+            stderr_path = runs_dir / "agent.stderr.log"
+
+            adapter.set_output_paths(stdout_path, stderr_path)
+
+            # Execute setup command before agent execution
+            if task.setup_command:
+                setup_success, setup_stdout, setup_stderr = self.execute_setup_command(
+                    worktree_path,
+                    task.setup_command
+                )
+
+                # Write setup logs
+                with open(runs_dir / "setup.stdout.log", "w") as f:
+                    f.write(setup_stdout)
+                with open(runs_dir / "setup.stderr.log", "w") as f:
+                    f.write(setup_stderr)
+
+                if not setup_success:
+                    # Setup failed, create a failed run record
+                    ended_at = datetime.utcnow()
+                    duration = (ended_at - started_at).total_seconds()
+
+                    run = BenchmarkRun(
+                        task_id=task.id,
+                        agent_config_id=agent_config_id,
+                        agent_name=adapter.name,
+                        model_name=adapter.model,
+                        started_at=started_at,
+                        ended_at=ended_at,
+                        duration_seconds=duration,
+                        exit_code=1,
+                        success=False,
+                        test_command=task.test_command,
+                        test_passed=0,
+                        test_failed=0,
+                        test_error="Setup command failed",
+                        tests_passed=False,
+                        files_changed=0,
+                        insertions=0,
+                        deletions=0,
+                        diff_stats="",
+                        stdout_path=str(stdout_path),
+                        stderr_path=str(stderr_path),
+                        results={
+                            "adapter_metadata": adapter.collect_metadata(),
+                            "original_commit": current_commit,
+                            "final_commit": task.base_commit,
+                            "setup_error": "Setup command failed",
+                            "setup_stdout_path": str(runs_dir / "setup.stdout.log"),
+                            "setup_stderr_path": str(runs_dir / "setup.stderr.log"),
+                        }
+                    )
+
+                    self.db.add(run)
+                    self.db.commit()
+                    self.db.refresh(run)
+
+                    return run
+
+            # Run the agent in workspace
+            exit_code, stdout, stderr = adapter.run_task(
+                task.agent_prompt,
+                task.timeout
             )
-        
-        # Get diff stats
-        files_changed, insertions, deletions, diff_stats = self.get_diff_stats(
-            repo_path,
-            current_commit
-        )
-        
-        # Determine overall success
-        success = exit_code == 0 and tests_passed
-        
-        # Write outputs to files
-        with open(stdout_path, "w") as f:
-            f.write(stdout)
-        with open(stderr_path, "w") as f:
-            f.write(stderr)
-        
-        # Create run record
-        run = BenchmarkRun(
-            task_id=task.id,
-            agent_config_id=agent_config_id,
-            agent_name=adapter.name,
-            model_name=adapter.model,
-            started_at=started_at,
-            ended_at=ended_at,
-            duration_seconds=duration,
-            exit_code=exit_code,
-            success=success,
-            test_command=task.test_command,
-            test_passed=test_passed_count,
-            test_failed=test_failed_count,
-            test_error=test_error,
-            tests_passed=tests_passed,
-            files_changed=files_changed,
-            insertions=insertions,
-            deletions=deletions,
-            diff_stats=diff_stats,
-            stdout_path=stdout_path,
-            stderr_path=stderr_path,
-            results={
-                "adapter_metadata": adapter.collect_metadata(),
-                "original_commit": current_commit,
-                "final_commit": self.verify_repository(repo_path)
-            }
-        )
-        
-        self.db.add(run)
-        self.db.commit()
-        self.db.refresh(run)
-        
-        # Cleanup temp files
-        adapter.cleanup()
-        
-        return run
+
+            ended_at = datetime.utcnow()
+            duration = (ended_at - started_at).total_seconds()
+
+            # Run tests in workspace
+            tests_passed = False
+            test_passed_count = 0
+            test_failed_count = 0
+            test_error = None
+
+            if task.test_command:
+                tests_passed, test_passed_count, test_failed_count, test_error = self.run_tests(
+                    repo_path,
+                    task.test_command,
+                    cwd=worktree_path
+                )
+
+            # Collect git evidence from workspace
+            workspace_head = get_git_commit(worktree_path)
+            workspace_status = get_git_status(worktree_path)
+            workspace_diff_stats = get_git_diff_stats(worktree_path, task.base_commit)
+
+            files_changed = workspace_diff_stats["files_changed"]
+            insertions = workspace_diff_stats["insertions"]
+            deletions = workspace_diff_stats["deletions"]
+            diff_stats = workspace_diff_stats.get("diffstat", "")
+
+            # Determine overall success
+            success = exit_code == 0 and tests_passed
+
+            # Write outputs to files
+            with open(stdout_path, "w") as f:
+                f.write(stdout)
+            with open(stderr_path, "w") as f:
+                f.write(stderr)
+
+            # Create run record
+            run = BenchmarkRun(
+                task_id=task.id,
+                agent_config_id=agent_config_id,
+                agent_name=adapter.name,
+                model_name=adapter.model,
+                started_at=started_at,
+                ended_at=ended_at,
+                duration_seconds=duration,
+                exit_code=exit_code,
+                success=success,
+                test_command=task.test_command,
+                test_passed=test_passed_count,
+                test_failed=test_failed_count,
+                test_error=test_error,
+                tests_passed=tests_passed,
+                files_changed=files_changed,
+                insertions=insertions,
+                deletions=deletions,
+                diff_stats=diff_stats,
+                stdout_path=str(stdout_path),
+                stderr_path=str(stderr_path),
+                results={
+                    "adapter_metadata": adapter.collect_metadata(),
+                    "original_commit": current_commit,
+                    "final_commit": workspace_head,
+                    "workspace_status": workspace_status,
+                    "workspace_diff_stats": diff_stats,
+                    "setup_command": task.setup_command,
+                    "logs_directory": str(runs_dir),
+                }
+            )
+
+            self.db.add(run)
+            self.db.commit()
+            self.db.refresh(run)
+
+            return run
+
+        finally:
+            # Cleanup worktree but keep logs in runs/ directory
+            cleanup_git_worktree(worktree_path, repo_path)
