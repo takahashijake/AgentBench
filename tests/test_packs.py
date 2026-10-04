@@ -12,7 +12,12 @@ from sqlalchemy.orm import sessionmaker
 from agentbench.cli import main
 from agentbench.manifests import load_suite_manifest
 from agentbench.models.database import Base
-from agentbench.packs import list_packs, materialize_pack, parse_agent_spec
+from agentbench.packs import (
+    list_packs,
+    materialize_pack,
+    parse_agent_spec,
+    preflight_pack,
+)
 from agentbench.provenance import build_suite_lock
 from agentbench.services.suite import SuiteService
 
@@ -183,7 +188,7 @@ def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
         {"analysis_schema_version": 3, "overall": {}},
     )
 
-    assert report["report_schema_version"] == 3
+    assert report["report_schema_version"] == 4
     assert report["suite"]["benchmark_pack"]["id"] == "smoke-v2"
     assert report["suite"]["schema_version"] == 4
     assert {task["category"] for task in report["resources"]["tasks"]} == {
@@ -245,3 +250,35 @@ else:
     )
     assert summary["ranking"]["entries"][0]["success_rate"] == 1.0
     assert len(imported.task_ids) == 2
+
+
+def test_engineering_v4_preflight_and_materialization_include_requirements(tmp_path: Path):
+    preflight = preflight_pack("engineering-v4")
+
+    assert preflight["eligible"] is True
+    assert preflight["task_count"] == 12
+    assert preflight["ineligible_task_count"] == 0
+
+    result = materialize_pack(
+        "engineering-v4",
+        tmp_path / "engineering-v4",
+        agents=[AGENT],
+        repetitions=1,
+    )
+    loaded = load_suite_manifest(result["manifest_path"])
+
+    assert loaded.manifest.schema_version == 4
+    assert loaded.manifest.benchmark_pack.id == "engineering-v4"
+    assert len(loaded.manifest.tasks) == 12
+    by_id = {task.id: task for task in loaded.manifest.tasks}
+    assert by_id["feature-bounded-retry"].requirements.required_commands == ["python"]
+    assert by_id["feature-bounded-retry"].requirements.min_memory_mb == 64
+
+
+def test_pack_preflight_cli_is_machine_readable(capsys):
+    assert main(["pack", "preflight", "engineering-v4"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["pack_id"] == "engineering-v4"
+    assert payload["eligible"] is True
+    assert payload["task_count"] == 12

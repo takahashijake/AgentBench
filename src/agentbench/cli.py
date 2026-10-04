@@ -13,7 +13,13 @@ from pydantic import ValidationError
 from . import __version__
 from .manifests import LoadedSuiteManifest, load_suite_manifest
 from .models.session import close_session, get_session, init_db
-from .packs import get_pack, list_packs, materialize_pack, parse_agent_spec
+from .packs import (
+    get_pack,
+    list_packs,
+    materialize_pack,
+    parse_agent_spec,
+    preflight_pack,
+)
 from .provenance import (
     build_suite_lock,
     environment_identity,
@@ -134,6 +140,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show one built-in pack and its tasks.",
     )
     pack_show.add_argument("pack_id")
+    pack_preflight = pack_subparsers.add_parser(
+        "preflight",
+        help="Check task host requirements before materializing or running a pack.",
+    )
+    pack_preflight.add_argument("pack_id")
     pack_materialize = pack_subparsers.add_parser(
         "materialize",
         help="Create deterministic Git fixtures and a runnable suite manifest.",
@@ -233,7 +244,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     results = subparsers.add_parser(
         "results",
-        help="Export aggregate V2 results for an existing experiment ID.",
+        help="Export aggregate results for an existing experiment ID.",
     )
     results.add_argument("experiment_id", type=int)
     _add_report_outputs(results)
@@ -406,6 +417,11 @@ def _run_pack_command(args: argparse.Namespace) -> int:
         payload = next(row for row in list_packs() if row["id"] == pack.id)
         _write_json(payload)
         return 0
+
+    if args.pack_command == "preflight":
+        payload = preflight_pack(args.pack_id)
+        _write_json(payload)
+        return 0 if payload["eligible"] else 3
 
     if args.pack_command == "materialize":
         agents = [parse_agent_spec(value) for value in args.agent]

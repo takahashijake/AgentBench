@@ -21,7 +21,7 @@ format-check:
 	$(PYTHON) -m ruff format --check src tests
 
 typecheck:
-	$(PYTHON) -m mypy src/agentbench/manifests.py src/agentbench/statistics.py src/agentbench/benchmark_packs/models.py src/agentbench/adapters/base.py
+	$(PYTHON) -m mypy src/agentbench/manifests.py src/agentbench/statistics.py src/agentbench/benchmark_packs/models.py src/agentbench/adapters/base.py src/agentbench/resources.py
 
 docs:
 	mkdocs build --strict
@@ -35,6 +35,7 @@ smoke:
 	agentbench doctor
 	agentbench pack list
 	agentbench pack show smoke-v2
+	agentbench pack preflight engineering-v4
 
 docker-build:
 	docker build --tag agentbench-local .
