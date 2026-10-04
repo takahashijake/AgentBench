@@ -39,7 +39,8 @@ jobs:
           python -m mypy             src/agentbench/manifests.py             src/agentbench/statistics.py             src/agentbench/benchmark_packs/models.py             src/agentbench/adapters/base.py \
             src/agentbench/resources.py \
             src/agentbench/services/local_executor.py \
-            src/agentbench/services/distributed_worker.py
+            src/agentbench/services/distributed_worker.py \
+            src/agentbench/publication.py
 
       - name: Test with coverage
         run: |
@@ -109,8 +110,8 @@ jobs:
           from agentbench.api import create_app
           from agentbench.packs import default_pack_registry
 
-          assert __version__ == "7.0.0"
-          assert create_app().version == "7.0.0"
+          assert __version__ == "8.0.0"
+          assert create_app().version == "8.0.0"
           registry = default_pack_registry()
           assert "agentbench.builtin" in registry.provider_ids
           assert registry.get("core-v3").pack.version == "3.0.0"

@@ -1,5 +1,33 @@
 # Changelog
 
+## 8.0.0 — Verifiable Static Evidence Publication
+
+### Publication
+
+- added deterministic static report publication for persisted experiments and
+  verified result bundles
+- generated sites contain dependency-free `index.html`, canonical
+  `report.json`, and content-addressed `publication.json`
+- publication identity binds every static payload to the verified source-bundle
+  identity
+- added independent publication verification with tamper, missing-file, and
+  undeclared-payload rejection
+
+### Portfolio and privacy
+
+- static output is suitable for GitHub Pages or any static host
+- no external JavaScript, fonts, analytics, or runtime network dependencies
+- publication consumes the portable bundle projection, so host-local repository
+  paths and raw command templates are not reintroduced
+- AgentBench package/API version 8.0.0
+
+### CLI
+
+- `agentbench publish experiment <id> -o <dir>`
+- `agentbench publish bundle <bundle.zip> -o <dir>`
+- `agentbench publish verify <dir>`
+
+
 ## 7.0.0 — Capability-aware Heterogeneous Scheduling
 
 ### Scheduling

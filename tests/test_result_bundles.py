@@ -18,6 +18,12 @@ from agentbench.models.database import (
     ExperimentExecution,
     ExperimentTrial,
 )
+from agentbench.publication import (
+    PublicationValidationError,
+    publish_bundle,
+    publish_experiment,
+    verify_publication,
+)
 from agentbench.result_bundles import (
     BundleValidationError,
     ResultBundleService,
@@ -232,3 +238,78 @@ def test_bundle_cli_verify_and_inspect(tmp_path: Path, capsys):
     assert main(["bundle", "inspect", str(bundle)]) == 0
     inspected = json.loads(capsys.readouterr().out)
     assert inspected["report"]["experiment"]["name"] == "bundle experiment"
+
+
+def test_static_publication_is_deterministic_and_verifiable(tmp_path: Path):
+    db, experiment = make_bundle_session(tmp_path)
+    bundle = tmp_path / "source.zip"
+    ResultBundleService(db).export(experiment.id, bundle)
+
+    first = tmp_path / "site-a"
+    second = tmp_path / "site-b"
+    one = publish_bundle(bundle, first)
+    two = publish_bundle(bundle, second)
+
+    assert one["identity_sha256"] == two["identity_sha256"]
+    for name in ("index.html", "report.json", "publication.json"):
+        assert (first / name).read_bytes() == (second / name).read_bytes()
+
+    verified = verify_publication(first)
+    assert verified.identity_sha256 == one["identity_sha256"]
+    assert (
+        verified.manifest["source_bundle_identity_sha256"]
+        == verify_result_bundle(bundle).identity_sha256
+    )
+    assert verified.report["experiment"]["name"] == "bundle experiment"
+
+    rendered = (first / "index.html").read_text(encoding="utf-8")
+    assert "bundle experiment" in rendered
+    assert "external JavaScript" in rendered
+    assert str(tmp_path) not in rendered
+
+
+def test_static_publication_from_experiment_uses_bundle_semantics(tmp_path: Path):
+    db, experiment = make_bundle_session(tmp_path)
+    site = tmp_path / "experiment-site"
+
+    published = publish_experiment(db, experiment.id, site)
+    verified = verify_publication(site)
+
+    assert published["published"] is True
+    assert published["source_bundle_identity_sha256"]
+    assert verified.report["experiment"]["id"] == experiment.id
+    assert (site / "report.json").is_file()
+
+
+def test_publication_verifier_rejects_tampering_and_undeclared_files(tmp_path: Path):
+    db, experiment = make_bundle_session(tmp_path)
+    bundle = tmp_path / "publication-source.zip"
+    ResultBundleService(db).export(experiment.id, bundle)
+
+    tampered = tmp_path / "tampered-site"
+    publish_bundle(bundle, tampered)
+    (tampered / "index.html").write_text("tampered", encoding="utf-8")
+    with pytest.raises(PublicationValidationError, match="(?:Size|Digest) mismatch"):
+        verify_publication(tampered)
+
+    extra = tmp_path / "extra-site"
+    publish_bundle(bundle, extra)
+    (extra / "secret.txt").write_text("unexpected", encoding="utf-8")
+    with pytest.raises(PublicationValidationError, match="undeclared"):
+        verify_publication(extra)
+
+
+def test_publication_cli_bundle_and_verify(tmp_path: Path, capsys):
+    db, experiment = make_bundle_session(tmp_path)
+    bundle = tmp_path / "cli-publication.zip"
+    ResultBundleService(db).export(experiment.id, bundle)
+    site = tmp_path / "cli-site"
+
+    assert main(["publish", "bundle", str(bundle), "--output", str(site)]) == 0
+    published = json.loads(capsys.readouterr().out)
+    assert published["published"] is True
+
+    assert main(["publish", "verify", str(site)]) == 0
+    verified = json.loads(capsys.readouterr().out)
+    assert verified["valid"] is True
+    assert verified["experiment"]["name"] == "bundle experiment"
