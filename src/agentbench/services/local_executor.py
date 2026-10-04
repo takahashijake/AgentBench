@@ -5,7 +5,7 @@ from __future__ import annotations
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from threading import Lock
-from typing import Any, TYPE_CHECKING
+from typing import Any, cast
 
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import sessionmaker
@@ -29,10 +29,9 @@ class LocalParallelExperimentExecutor:
         bind = coordinator.db.get_bind()
         if bind is None:
             raise ValueError("Parallel execution requires a bound database engine")
-        if isinstance(bind, Connection):
-            self.engine = bind.engine
-        else:
-            self.engine = bind
+        self.engine: Engine = (
+            bind.engine if isinstance(bind, Connection) else cast(Engine, bind)
+        )
         if self.engine.dialect.name == "sqlite":
             database = self.engine.url.database
             if database in {None, "", ":memory:"}:
@@ -127,18 +126,21 @@ class LocalParallelExperimentExecutor:
                 f"Experiment {experiment.id} already has running trials"
             )
 
-        pending: list[Any] = (
-            self.coordinator.db.query(
-                ExperimentTrial.id,
-                ExperimentTrial.task_id,
+        pending: list[tuple[int, int]] = [
+            (int(trial_id), int(task_id))
+            for trial_id, task_id in (
+                self.coordinator.db.query(
+                    ExperimentTrial.id,
+                    ExperimentTrial.task_id,
+                )
+                .filter(
+                    ExperimentTrial.experiment_id == experiment.id,
+                    ExperimentTrial.status == "planned",
+                )
+                .order_by(ExperimentTrial.ordinal.asc())
+                .all()
             )
-            .filter(
-                ExperimentTrial.experiment_id == experiment.id,
-                ExperimentTrial.status == "planned",
-            )
-            .order_by(ExperimentTrial.ordinal.asc())
-            .all()
-        )
+        ]
         if not pending:
             self.coordinator._finalize_status(experiment)
             self.coordinator.db.commit()
