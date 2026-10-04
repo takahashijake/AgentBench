@@ -15,6 +15,7 @@ from agentbench.models.database import (
     BenchmarkRun,
     BenchmarkTask,
     Experiment,
+    ExperimentExecution,
     ExperimentTrial,
 )
 from agentbench.result_bundles import (
@@ -122,6 +123,16 @@ def make_bundle_session(tmp_path: Path):
     db.add(experiment)
     db.flush()
 
+    execution = ExperimentExecution(
+        experiment_id=experiment.id,
+        mode="local_parallel",
+        max_workers=4,
+        status="completed",
+        details={"planned_for_attempt": 1},
+    )
+    db.add(execution)
+    db.flush()
+
     trial = ExperimentTrial(
         experiment_id=experiment.id,
         task_id=task.id,
@@ -162,6 +173,9 @@ def test_result_bundle_is_deterministic_and_verifiable(tmp_path: Path):
     assert run_results["git_evidence"]["patch"] == "artifacts/run-1/git/diff.patch"
     assert "repository_path" not in experiment_doc["task_snapshots"][0]
     assert "command_template" not in experiment_doc["agent_snapshots"][0]
+    assert experiment_doc["executions"][0]["mode"] == "local_parallel"
+    assert experiment_doc["executions"][0]["max_workers"] == 4
+    assert experiment_doc["executions"][0]["details"]["planned_for_attempt"] == 1
 
     inspected = inspect_result_bundle(first)
     assert inspected["valid"] is True

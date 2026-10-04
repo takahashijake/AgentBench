@@ -134,6 +134,8 @@ def test_pack_cli_lists_and_materializes(tmp_path: Path, capsys):
                 'fixture=python -c "print(1)" {prompt}',
                 "--repetitions",
                 "2",
+                "--workers",
+                "2",
             ]
         )
         == 0
@@ -141,6 +143,7 @@ def test_pack_cli_lists_and_materializes(tmp_path: Path, capsys):
     generated = json.loads(capsys.readouterr().out)
     assert generated["schema_version"] == 5
     assert generated["planned_runs"] == 4
+    assert generated["max_workers"] == 2
     assert (output / "suite.yaml").is_file()
 
 
@@ -306,3 +309,63 @@ def test_engineering_v4_fixtures_begin_unsolved(tmp_path: Path):
 
     assert len(returncodes) == 12
     assert all(code != 0 for code in returncodes.values())
+
+
+def test_locked_suite_worker_policy_executes_through_parallel_product_path(
+    tmp_path: Path,
+):
+    solver_code = """
+from pathlib import Path
+duration = Path("duration.py")
+if duration.exists():
+    duration.write_text(
+        duration.read_text(encoding="utf-8").replace('"ms": 1.0', '"ms": 0.001'),
+        encoding="utf-8",
+    )
+else:
+    Path("slug.py").write_text(
+        'import re\\n\\ndef slugify(text: str) -> str:\\n'
+        '    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")\\n',
+        encoding="utf-8",
+    )
+""".strip()
+    solver = {
+        "id": "parallel-solver",
+        "description": "test-only fixture agent",
+        "command_template": (
+            shlex.join([sys.executable, "-c", solver_code]) + " {prompt}"
+        ),
+    }
+    materialized = materialize_pack(
+        "smoke-v2",
+        tmp_path / "parallel-suite",
+        agents=[solver],
+        repetitions=1,
+        max_workers=2,
+    )
+    loaded = load_suite_manifest(materialized["manifest_path"])
+    lock = build_suite_lock(loaded)
+
+    assert loaded.manifest.experiment.max_workers == 2
+    assert lock["experiment"]["max_workers"] == 2
+
+    database = tmp_path / "parallel-product.sqlite3"
+    engine = create_engine(
+        f"sqlite:///{database}",
+        connect_args={"check_same_thread": False, "timeout": 30},
+    )
+    Base.metadata.create_all(bind=engine)
+    db = sessionmaker(bind=engine)()
+    service = SuiteService(
+        db,
+        artifact_root=tmp_path / "parallel-artifacts",
+        setup_timeout=2,
+        test_timeout=5,
+    )
+
+    _, experiment, summary = service.execute_suite(loaded)
+
+    assert experiment.status == "completed"
+    assert summary["overall"]["successful_runs"] == 2
+    assert summary["latest_execution"]["mode"] == "local_parallel"
+    assert summary["latest_execution"]["max_workers"] == 2

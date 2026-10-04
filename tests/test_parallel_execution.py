@@ -13,6 +13,7 @@ from agentbench.models.database import (
     Base,
     BenchmarkRun,
     BenchmarkTask,
+    ExperimentExecution,
     ExperimentTrial,
 )
 from agentbench.services.experiment import ExperimentService
@@ -103,6 +104,11 @@ raise SystemExit(0 if len(list(root.glob("*.start"))) >= 2 else 9)
     assert summary["overall"]["benchmark_runs"] == 2
     assert summary["overall"]["successful_runs"] == 2
     assert summary["overall"]["orchestration_errors"] == 0
+    assert summary["analysis_schema_version"] == 5
+    assert summary["latest_execution"]["mode"] == "local_parallel"
+    assert summary["latest_execution"]["max_workers"] == 2
+    assert summary["latest_execution"]["status"] == "completed"
+    assert len(summary["execution_history"]) == 1
     assert len(list(barrier.glob("*.start"))) == 2
 
     run_count = db.query(BenchmarkRun).count()
@@ -145,6 +151,12 @@ def test_recover_running_trials_requires_explicit_service_action(tmp_path: Path)
 
     trial = experiment.trials[0]
     trial.status = "running"
+    experiment.status = "running"
+    attempt = service._start_execution_attempt(
+        experiment.id,
+        mode="local_parallel",
+        max_workers=2,
+    )
     db.commit()
 
     assert service.recover_running_trials(experiment.id) == 1
@@ -152,6 +164,10 @@ def test_recover_running_trials_requires_explicit_service_action(tmp_path: Path)
     assert trial.status == "planned"
     assert trial.started_at is None
     assert trial.completed_at is None
+    db.refresh(attempt)
+    assert attempt.status == "interrupted"
+    assert attempt.completed_at is not None
+    assert attempt.details["recovered_running_trials"] == 1
 
     completed = service.execute_experiment(experiment.id, max_workers=1)
     assert completed.status == "completed"
@@ -193,3 +209,11 @@ def test_parallel_stop_on_error_finishes_inflight_but_stops_new_work(tmp_path: P
     assert trials[1].status == "completed"
     assert trials[2].status == "planned"
     assert db.query(BenchmarkRun).count() == 1
+    attempts = (
+        db.query(ExperimentExecution)
+        .filter(ExperimentExecution.experiment_id == experiment.id)
+        .order_by(ExperimentExecution.id.asc())
+        .all()
+    )
+    assert attempts[-1].status == "failed"
+    assert attempts[-1].max_workers == 2
