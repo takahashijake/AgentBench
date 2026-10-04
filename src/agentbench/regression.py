@@ -268,10 +268,7 @@ def evaluate_regression_gate(
         deltas = row.get("deltas") or {}
 
         success_delta = deltas.get("success_rate")
-        if (
-            success_delta is not None
-            and success_delta < -policy.max_success_rate_drop
-        ):
+        if success_delta is not None and success_delta < -policy.max_success_rate_drop:
             violations.append(
                 {
                     "agent_name": name,
@@ -313,8 +310,7 @@ def evaluate_regression_gate(
         if (
             policy.max_median_runtime_increase_ratio is not None
             and runtime_ratio is not None
-            and runtime_ratio
-            > 1.0 + policy.max_median_runtime_increase_ratio
+            and runtime_ratio > 1.0 + policy.max_median_runtime_increase_ratio
         ):
             violations.append(
                 {
