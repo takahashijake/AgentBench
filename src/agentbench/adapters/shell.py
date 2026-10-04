@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from .base import AgentAdapter
 from ..execution import ProcessResult, run_process
+from ..usage import detect_agent_family, extract_usage_metadata
 
 
 class ShellAgentAdapter(AgentAdapter):
@@ -79,6 +80,7 @@ class ShellAgentAdapter(AgentAdapter):
     def collect_metadata(self) -> Dict[str, Any]:
         metadata: Dict[str, Any] = {
             "adapter": "shell",
+            "agent_family": detect_agent_family(self.command_template),
             "command_template": self.command_template,
             "workspace_path": str(self.workspace_path) if self.workspace_path else None,
         }
@@ -88,6 +90,10 @@ class ShellAgentAdapter(AgentAdapter):
                     "timed_out": self.last_result.timed_out,
                     "process_duration_seconds": self.last_result.duration_seconds,
                     "returncode": self.last_result.returncode,
+                    "usage": extract_usage_metadata(
+                        self.last_result.stdout,
+                        self.last_result.stderr,
+                    ),
                 }
             )
         return metadata
