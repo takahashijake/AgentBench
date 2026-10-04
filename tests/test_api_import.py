@@ -12,7 +12,7 @@ def test_api_import_and_mapper_configuration():
     paths = set(app.openapi()["paths"])
     assert "/" in paths
     assert "/dashboard" in paths
-    assert "/docs" in paths
+    assert app.docs_url == "/docs"
     assert "/api/health" in paths
     assert "/api/packs" in paths
     assert "/api/packs/{pack_id}" in paths
