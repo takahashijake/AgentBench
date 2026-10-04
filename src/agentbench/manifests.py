@@ -36,6 +36,12 @@ class ManifestBenchmarkPack(BaseModel):
     id: str = Field(..., min_length=1, max_length=128, pattern=_RESOURCE_ID_PATTERN)
     version: str = Field(..., min_length=1, max_length=64)
     provider: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    compatibility_id: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=_RESOURCE_ID_PATTERN,
+    )
     description: Optional[str] = None
 
 
