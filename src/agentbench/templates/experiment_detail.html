@@ -52,14 +52,14 @@
   <div class="card border-0 shadow-sm mb-4"><div class="card-body">
     <h2 class="h5">Pairwise task outcomes</h2>
     <div class="table-responsive"><table class="table align-middle mb-0">
-      <thead><tr><th>Agent A</th><th>Agent B</th><th>A wins</th><th>B wins</th><th>Ties</th><th>Tasks</th></tr></thead>
+      <thead><tr><th>Agent A</th><th>Agent B</th><th>A wins</th><th>B wins</th><th>Ties</th><th>Mean Δ</th><th>Sign p</th><th>Tasks</th></tr></thead>
       <tbody>
       {% for row in pairwise %}
-        <tr><td>{{ row.left_agent_name }}</td><td>{{ row.right_agent_name }}</td><td>{{ row.left_task_wins }}</td><td>{{ row.right_task_wins }}</td><td>{{ row.ties }}</td><td>{{ row.tasks_compared }}</td></tr>
-      {% else %}<tr><td colspan="6" class="text-secondary text-center py-4">Pairwise comparison requires at least two agents.</td></tr>{% endfor %}
+        <tr><td>{{ row.left_agent_name }}</td><td>{{ row.right_agent_name }}</td><td>{{ row.left_task_wins }}</td><td>{{ row.right_task_wins }}</td><td>{{ row.ties }}</td><td>{{ '%.1f'|format((row.mean_success_rate_difference or 0) * 100) }}%</td><td>{% if row.exact_sign_test %}{{ '%.4f'|format(row.exact_sign_test.p_value) }}{% else %}—{% endif %}</td><td>{{ row.tasks_compared }}</td></tr>
+      {% else %}<tr><td colspan="8" class="text-secondary text-center py-4">Pairwise comparison requires at least two agents.</td></tr>{% endfor %}
       </tbody>
     </table></div>
-    <p class="text-secondary small mt-3 mb-0">Pairwise wins use task success rate only. Equal-quality task outcomes stay tied; runtime is not used to manufacture a win.</p>
+    <p class="text-secondary small mt-3 mb-0">Pairwise wins use task success rate only. Equal-quality outcomes stay tied; runtime is not used to manufacture a win. Exact sign-test p-values are descriptive and are not used by the ranking.</p>
   </div></div>
 
   <div class="alert alert-secondary mb-0">
