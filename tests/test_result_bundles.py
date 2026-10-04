@@ -157,6 +157,9 @@ def test_result_bundle_is_deterministic_and_verifiable(tmp_path: Path):
     assert str(tmp_path) not in serialized
     run_results = experiment_doc["trials"][0]["benchmark_run"]["results"]
     assert run_results["artifact_bundle_prefix"] == "artifacts/run-1/"
+    assert run_results["git_evidence"]["patch"] == "artifacts/run-1/git/diff.patch"
+    assert "repository_path" not in experiment_doc["task_snapshots"][0]
+    assert "command_template" not in experiment_doc["agent_snapshots"][0]
 
     inspected = inspect_result_bundle(first)
     assert inspected["valid"] is True
