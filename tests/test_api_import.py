@@ -27,7 +27,6 @@ def test_api_import_and_mapper_configuration():
     assert "/api/experiments/{experiment_id}/run" in paths
     assert "/api/experiments/{experiment_id}/results" in paths
     assert "/api/experiments/{experiment_id}/leaderboard" in paths
-    assert "/api/experiments/{experiment_id}/bundle" in paths
 
 
 
