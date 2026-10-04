@@ -25,6 +25,7 @@ from ..artifacts import RunArtifactStore
 from ..evidence import capture_git_evidence
 from ..execution import ProcessResult, run_shell_command
 from ..models.database import AgentConfig, BenchmarkRun, BenchmarkTask
+from ..provenance import capture_run_provenance
 from ..timeutils import utc_now
 from ..utils.git import (
     cleanup_git_worktree,
@@ -296,6 +297,7 @@ class BenchmarkService:
         agent_result: Optional[ProcessResult] = None
         test_execution: Optional[TestExecution] = None
         evidence: Optional[dict[str, Any]] = None
+        run_provenance: Optional[dict[str, Any]] = None
         evidence_attempted = False
         internal_error: Optional[str] = None
         cleanup_report: dict[str, Any] = {
@@ -305,6 +307,9 @@ class BenchmarkService:
         }
 
         try:
+            run_provenance = capture_run_provenance(adapter.command_template)
+            artifact_store.write_json("provenance.json", run_provenance)
+
             worktree_path = create_git_worktree(repo_path, task.base_commit)
             adapter.prepare(worktree_path, task.base_commit)
 
@@ -469,6 +474,7 @@ class BenchmarkService:
         result_payload: Dict[str, Any] = {
             "artifact_directory": str(artifact_store.root),
             "adapter_metadata": adapter.collect_metadata(),
+            "provenance": run_provenance,
             "repository_head_at_start": original_commit,
             "base_commit": task.base_commit,
             "final_commit": evidence.get("head_commit") if evidence else None,
