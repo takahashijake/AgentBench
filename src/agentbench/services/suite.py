@@ -207,7 +207,6 @@ class SuiteService:
     def execute_suite(
         self,
         loaded: LoadedSuiteManifest,
-        *,
     ) -> tuple[SuiteImportResult, Experiment, dict[str, Any]]:
         """Import, plan, execute, and aggregate a complete suite."""
 
