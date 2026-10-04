@@ -5,18 +5,15 @@ from __future__ import annotations
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import sessionmaker
 
 from ..models.database import ExperimentTrial
 from ..timeutils import utc_now
 from .benchmark import BenchmarkService
 from .experiment import ExperimentBusyError, ExperimentService, TrialExecutionOutcome
-
-if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
-
 
 class LocalParallelExperimentExecutor:
     """Execute independent experiment cells without sharing ORM sessions."""
@@ -32,7 +29,10 @@ class LocalParallelExperimentExecutor:
         bind = coordinator.db.get_bind()
         if bind is None:
             raise ValueError("Parallel execution requires a bound database engine")
-        self.engine: Engine = bind
+        if isinstance(bind, Connection):
+            self.engine = bind.engine
+        else:
+            self.engine = bind
         if self.engine.dialect.name == "sqlite":
             database = self.engine.url.database
             if database in {None, "", ":memory:"}:
@@ -95,11 +95,19 @@ class LocalParallelExperimentExecutor:
                 .one_or_none()
             )
             if trial is not None and trial.status in {"planned", "running"}:
-                trial.status = "error"
-                trial.error = f"{type(exc).__name__}: {exc}"
+                now = utc_now()
+                values: dict[Any, Any] = {
+                    ExperimentTrial.status: "error",
+                    ExperimentTrial.error: f"{type(exc).__name__}: {exc}",
+                    ExperimentTrial.completed_at: now,
+                }
                 if trial.started_at is None:
-                    trial.started_at = utc_now()
-                trial.completed_at = utc_now()
+                    values[ExperimentTrial.started_at] = now
+                (
+                    db.query(ExperimentTrial)
+                    .filter(ExperimentTrial.id == int(trial_id))
+                    .update(values, synchronize_session=False)
+                )
                 db.commit()
         finally:
             db.close()
@@ -119,7 +127,7 @@ class LocalParallelExperimentExecutor:
                 f"Experiment {experiment.id} already has running trials"
             )
 
-        pending = (
+        pending: list[Any] = (
             self.coordinator.db.query(
                 ExperimentTrial.id,
                 ExperimentTrial.task_id,
