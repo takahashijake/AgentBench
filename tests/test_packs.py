@@ -27,12 +27,17 @@ AGENT = {
 def test_builtin_pack_catalog_has_portfolio_task_coverage():
     packs = {row["id"]: row for row in list_packs()}
 
-    assert {"smoke-v2", "core-v2", "core-v3"} <= set(packs)
+    assert {"smoke-v2", "core-v2", "core-v3", "engineering-v4"} <= set(packs)
     core = packs["core-v2"]
     assert core["task_count"] == 4
     assert core["provider"] == "agentbench.builtin"
     assert packs["core-v3"]["task_count"] == 8
     assert packs["core-v3"]["provider"] == "agentbench.builtin"
+    assert packs["engineering-v4"]["task_count"] == 12
+    assert packs["engineering-v4"]["provider"] == "agentbench.builtin"
+    assert all(
+        "requirements" in task for task in packs["engineering-v4"]["tasks"]
+    )
     assert {task["category"] for task in core["tasks"]} == {
         "bugfix",
         "feature",
@@ -59,7 +64,7 @@ def test_pack_materialization_is_deterministic_and_manifest_is_v3(tmp_path: Path
     assert first["planned_runs"] == 6
 
     loaded = load_suite_manifest(first["manifest_path"])
-    assert loaded.manifest.schema_version == 3
+    assert loaded.manifest.schema_version == 4
     assert loaded.manifest.benchmark_pack.id == "smoke-v2"
     assert loaded.manifest.benchmark_pack.provider == "agentbench.builtin"
     assert loaded.manifest.experiment.repetitions == 3
@@ -131,7 +136,7 @@ def test_pack_cli_lists_and_materializes(tmp_path: Path, capsys):
         == 0
     )
     generated = json.loads(capsys.readouterr().out)
-    assert generated["schema_version"] == 3
+    assert generated["schema_version"] == 4
     assert generated["planned_runs"] == 4
     assert (output / "suite.yaml").is_file()
 
@@ -158,7 +163,7 @@ def test_pack_metadata_flows_into_lock_and_suite_report(tmp_path: Path):
     loaded = load_suite_manifest(result["manifest_path"])
 
     lock = build_suite_lock(loaded)
-    assert lock["suite"]["schema_version"] == 3
+    assert lock["suite"]["schema_version"] == 4
     assert lock["suite"]["benchmark_pack"]["id"] == "smoke-v2"
     assert lock["suite"]["benchmark_pack"]["version"] == "2.0.0"
     assert lock["suite"]["benchmark_pack"]["provider"] == "agentbench.builtin"

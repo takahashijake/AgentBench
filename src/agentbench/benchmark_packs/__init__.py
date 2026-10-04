@@ -1,6 +1,6 @@
 """Benchmark-pack domain and extension surface."""
 
-from .builtin import BuiltinPackProvider, CORE_V2, CORE_V3, SMOKE_V2
+from .builtin import BuiltinPackProvider, CORE_V2, CORE_V3, CORE_V4, SMOKE_V2
 from .discovery import PACK_PROVIDER_ENTRYPOINT_GROUP, discover_pack_providers
 from .materializer import PackMaterializationResult, PackMaterializer, parse_agent_spec
 from .models import BenchmarkPack, PackTaskSpec
@@ -19,6 +19,7 @@ __all__ = [
     "BuiltinPackProvider",
     "CORE_V2",
     "CORE_V3",
+    "CORE_V4",
     "DuplicatePackError",
     "PACK_PROVIDER_ENTRYPOINT_GROUP",
     "PackMaterializationResult",

@@ -24,8 +24,8 @@ from . import __version__
 from .manifests import LoadedSuiteManifest
 
 
-LOCK_SCHEMA_VERSION = 2
-SUPPORTED_LOCK_SCHEMA_VERSIONS = frozenset({1, 2})
+LOCK_SCHEMA_VERSION = 3
+SUPPORTED_LOCK_SCHEMA_VERSIONS = frozenset({1, 2, 3})
 _VERSION_TIMEOUT_SECONDS = 3
 _MAX_VERSION_OUTPUT = 1000
 
@@ -189,6 +189,7 @@ def build_suite_lock(loaded: LoadedSuiteManifest) -> dict[str, Any]:
                 "category": task.category,
                 "difficulty": task.difficulty,
                 "tags": list(task.tags),
+                "requirements": task.requirements.model_dump(mode="json"),
             }
         )
 

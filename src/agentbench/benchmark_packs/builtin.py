@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import textwrap
 
+from .engineering_v4 import ENGINEERING_V4_EXTRA_TASKS
 from .models import BenchmarkPack, PackTaskSpec
 
 
@@ -723,16 +724,30 @@ CORE_V3 = BenchmarkPack(
 )
 
 
+CORE_V4 = BenchmarkPack(
+    id="engineering-v4",
+    version="4.0.0",
+    name="AgentBench Engineering V4",
+    description=(
+        "Twelve deterministic software-engineering tasks spanning bugfix, feature, "
+        "regression, refactor, multi-file state, diagnostics, reliability, and "
+        "extension architecture work with explicit host requirements."
+    ),
+    tasks=CORE_V3.tasks + ENGINEERING_V4_EXTRA_TASKS,
+)
+
+
 class BuiltinPackProvider:
     provider_id = "agentbench.builtin"
 
     def packs(self) -> tuple[BenchmarkPack, ...]:
-        return (SMOKE_V2, CORE_V2, CORE_V3)
+        return (SMOKE_V2, CORE_V2, CORE_V3, CORE_V4)
 
 
 __all__ = [
     "BuiltinPackProvider",
     "CORE_V2",
     "CORE_V3",
+    "CORE_V4",
     "SMOKE_V2",
 ]

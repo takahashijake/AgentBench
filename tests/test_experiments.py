@@ -15,6 +15,7 @@ from agentbench.models.database import (
     BenchmarkTask,
     ExperimentTrial,
 )
+from agentbench.resources import ResourceEligibility
 from agentbench.services.experiment import ExperimentBusyError, ExperimentService
 
 from helpers import init_git_repo
@@ -335,3 +336,51 @@ def test_running_trial_blocks_parallel_matrix_execution(tmp_path: Path):
         service.execute_experiment(experiment.id)
 
     assert db.query(BenchmarkRun).count() == 0
+
+
+class RejectingResourceInspector:
+    def evaluate(self, requirements):
+        return ResourceEligibility(
+            eligible=False,
+            reasons=("fixture host is intentionally incompatible",),
+            observed={"platform": "fixture"},
+        )
+
+
+def test_resource_incompatible_trial_is_skipped_without_penalizing_agent(tmp_path: Path):
+    repo = tmp_path / "target-resource-skip"
+    base_commit = init_git_repo(repo)
+    db = make_session()
+
+    agent = add_agent(db, "resource-agent", "pass")
+    task = add_task(db, name="resource-task", repo=repo, base_commit=base_commit)
+    service = ExperimentService(
+        db,
+        artifact_root=tmp_path / "artifacts",
+        resource_inspector=RejectingResourceInspector(),
+    )
+    experiment = service.create_experiment(
+        name="resource-aware",
+        task_ids=[task.id],
+        agent_config_ids=[agent.id],
+        task_requirements={
+            task.id: {
+                "min_cpu_count": 8,
+                "required_commands": ["special-tool"],
+            }
+        },
+    )
+
+    completed = service.execute_experiment(experiment.id)
+    summary = service.aggregate_experiment(experiment.id)
+
+    assert completed.status == "completed"
+    assert completed.trials[0].status == "skipped"
+    assert "Resource requirements not satisfied" in completed.trials[0].error
+    assert db.query(BenchmarkRun).count() == 0
+    assert summary["analysis_schema_version"] == 4
+    assert summary["overall"]["planned_runs"] == 1
+    assert summary["overall"]["eligible_planned_runs"] == 0
+    assert summary["overall"]["skipped_runs"] == 1
+    assert summary["overall"]["success_rate"] is None
+    assert summary["overall"]["orchestration_errors"] == 0
