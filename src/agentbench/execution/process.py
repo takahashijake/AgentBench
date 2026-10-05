@@ -89,6 +89,7 @@ def run_process(
     process = subprocess.Popen(
         list(argv),
         cwd=cwd,
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
