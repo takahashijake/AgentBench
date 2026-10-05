@@ -281,8 +281,7 @@ def test_result_bundle_projects_worker_owner_privacy_and_scope(tmp_path: Path):
     assert execution_details["nested"]["owner_id_sha256"] == owner_hash
     assert experiment_doc["worker_attempts"][0]["owner_id_sha256"] == owner_hash
     assert (
-        experiment_doc["worker_attempts"][0]["details"]["owner_id_sha256"]
-        == owner_hash
+        experiment_doc["worker_attempts"][0]["details"]["owner_id_sha256"] == owner_hash
     )
 
 
