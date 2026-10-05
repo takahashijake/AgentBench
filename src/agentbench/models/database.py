@@ -30,7 +30,9 @@ class AgentConfig(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), unique=True, nullable=False)
     description = Column(Text, nullable=True)
-    command_template = Column(Text, nullable=False, default=DEFAULT_AGENT_COMMAND_TEMPLATE)
+    command_template = Column(
+        Text, nullable=False, default=DEFAULT_AGENT_COMMAND_TEMPLATE
+    )
     enabled = Column(Boolean, default=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
