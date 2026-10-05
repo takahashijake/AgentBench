@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from agentbench.cli import main
 from agentbench.manifests import load_suite_manifest
 from agentbench.packs import materialize_pack
@@ -51,6 +53,66 @@ def test_suite_preflight_reports_missing_agent_executable(tmp_path: Path):
     assert payload["ready_task_count"] == 2
     assert payload["ready_agent_count"] == 0
     assert "not available on PATH" in payload["agents"][0]["reasons"][0]
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_ready", "reason_fragment"),
+    [
+        (
+            'qwen -p "{prompt}"',
+            False,
+            "does not explicitly enable unattended editing",
+        ),
+        (
+            'qwen -p "{prompt}" --approval-mode auto-edit',
+            True,
+            None,
+        ),
+        (
+            'codex exec "{prompt}"',
+            False,
+            "does not explicitly enable unattended workspace writes",
+        ),
+        (
+            'codex exec --full-auto "{prompt}"',
+            True,
+            None,
+        ),
+    ],
+)
+def test_suite_preflight_checks_known_agent_automation_modes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: str,
+    expected_ready: bool,
+    reason_fragment: str | None,
+):
+    slug = command.split()[0] + ("-ready" if expected_ready else "-blocked")
+    result = materialize_pack(
+        "smoke-v2",
+        tmp_path / slug,
+        agents=[_agent(command)],
+        repetitions=1,
+    )
+    loaded = load_suite_manifest(result["manifest_path"])
+    monkeypatch.setattr(
+        "agentbench.preflight.executable_identity",
+        lambda _command: {
+            "command": command.split()[0],
+            "resolved_name": command.split()[0],
+            "version": "fixture",
+            "binary_sha256": "0" * 64,
+        },
+    )
+
+    payload = preflight_suite(loaded)
+
+    assert payload["ready"] is expected_ready
+    assert payload["ready_agent_count"] == (1 if expected_ready else 0)
+    if reason_fragment is None:
+        assert payload["agents"][0]["reasons"] == []
+    else:
+        assert reason_fragment in payload["agents"][0]["reasons"][0]
 
 
 def test_suite_preflight_cli_returns_machine_readable_status(tmp_path: Path, capsys):

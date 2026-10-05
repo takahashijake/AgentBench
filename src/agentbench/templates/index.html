@@ -71,8 +71,8 @@
     <div class="card-body p-4">
       <h2 class="h5">Start a real comparison</h2>
       <pre class="bg-dark text-light rounded p-3 mb-0"><code>agentbench pack materialize core-v2 -o ./benchmarks/core \
-  --agent 'qwen=qwen -p "{prompt}"' \
-  --agent 'codex=codex exec "{prompt}"' \
+  --agent 'qwen=qwen -p "{prompt}" --approval-mode auto-edit' \
+  --agent 'codex=codex exec --full-auto "{prompt}"' \
   --repetitions 5
 
 agentbench lock ./benchmarks/core/suite.yaml

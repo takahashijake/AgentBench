@@ -55,8 +55,8 @@ reasoning while remaining deterministic and fast enough for repeated trials.
 ```bash
 agentbench pack materialize core-v3 \
   -o ./benchmarks/core-v3 \
-  --agent 'qwen=qwen -p "{prompt}"' \
-  --agent 'codex=codex exec "{prompt}"' \
+  --agent 'qwen=qwen -p "{prompt}" --approval-mode auto-edit' \
+  --agent 'codex=codex exec --full-auto "{prompt}"' \
   --repetitions 5
 ```
 

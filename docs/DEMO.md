@@ -21,8 +21,8 @@ package-build, and smoke gates enforced by CI.
 ```bash
 agentbench pack materialize engineering-v4 \
   --output ./benchmarks/engineering-v4 \
-  --agent 'qwen=qwen -p "{prompt}"' \
-  --agent 'codex=codex exec "{prompt}"' \
+  --agent 'qwen=qwen -p "{prompt}" --approval-mode auto-edit' \
+  --agent 'codex=codex exec --full-auto "{prompt}"' \
   --repetitions 5 \
   --workers 4
 

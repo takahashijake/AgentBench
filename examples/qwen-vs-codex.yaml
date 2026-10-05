@@ -8,11 +8,11 @@ description: >
 agents:
   - id: qwen-local
     description: Local Qwen coding agent
-    command_template: qwen -p "{prompt}"
+    command_template: qwen -p "{prompt}" --approval-mode auto-edit
 
   - id: codex
     description: OpenAI Codex CLI
-    command_template: codex exec "{prompt}"
+    command_template: codex exec --full-auto "{prompt}"
 
 tasks:
   - id: add-about-command
