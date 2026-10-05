@@ -261,7 +261,6 @@ def test_unittest_output_counts_are_parsed():
     assert failed == 2
 
 
-
 def test_direct_benchmark_rejects_known_agent_without_unattended_mode(tmp_path: Path):
     db = make_session()
     agent = AgentConfig(
