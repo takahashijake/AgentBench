@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shlex
+import subprocess
 import sys
 from pathlib import Path
 
@@ -38,3 +39,33 @@ def test_process_timeout_is_bounded(tmp_path: Path):
     assert result.returncode != 0
     assert result.duration_seconds < 5
     assert "timed out" in result.stderr
+
+
+def test_process_closes_stdin_for_noninteractive_automation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    real_popen = subprocess.Popen
+    observed: dict[str, object] = {}
+
+    def recording_popen(*args, **kwargs):
+        observed["stdin"] = kwargs.get("stdin")
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "agentbench.execution.process.subprocess.Popen",
+        recording_popen,
+    )
+    result = run_process(
+        [
+            sys.executable,
+            "-c",
+            "import sys; data = sys.stdin.read(); print(len(data))",
+        ],
+        cwd=tmp_path,
+        timeout=5,
+    )
+
+    assert result.returncode == 0
+    assert result.stdout.strip() == "0"
+    assert observed["stdin"] == subprocess.DEVNULL
