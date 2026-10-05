@@ -342,14 +342,11 @@ def verify_publication(path: str | Path) -> VerifiedPublication:
 
     if sorted(declared_names) != sorted(_PUBLICATION_FILES):
         raise PublicationValidationError("Publication manifest has incomplete file set")
-    actual = sorted(
-        item.name
-        for item in root.iterdir()
-        if item.is_file() and item.name != "publication.json"
-    )
-    if actual != sorted(_PUBLICATION_FILES):
+    allowed_entries = {*_PUBLICATION_FILES, "publication.json"}
+    actual_entries = {item.name for item in root.iterdir()}
+    if actual_entries != allowed_entries:
         raise PublicationValidationError(
-            "Publication directory contains undeclared payload files"
+            "Publication directory contains undeclared payload files or directories"
         )
 
     try:
