@@ -212,14 +212,6 @@ def _portable_owner_values(value: Any) -> Any:
 def _portable_summary(summary: dict[str, Any]) -> dict[str, Any]:
     """Project local analysis onto experiment-scoped, privacy-safe semantics."""
 
-    raw_attempts = summary.get("worker_attempts")
-    attempts = raw_attempts if isinstance(raw_attempts, list) else []
-    experiment_owners = {
-        str(item.get("owner_id"))
-        for item in attempts
-        if isinstance(item, dict) and item.get("owner_id")
-    }
-
     projected = _portable_owner_values(summary)
     if not isinstance(projected, dict):
         return {}
@@ -233,14 +225,10 @@ def _portable_summary(summary: dict[str, Any]) -> dict[str, Any]:
                 _sha256_bytes(str(owner).encode("utf-8")) for owner in raw_owners
             ]
 
-    raw_registrations = summary.get("worker_registrations")
-    if isinstance(raw_registrations, list):
-        projected["worker_registrations"] = [
-            _portable_owner_values(item)
-            for item in raw_registrations
-            if isinstance(item, dict)
-            and str(item.get("owner_id") or "") in experiment_owners
-        ]
+    # Registrations are live host state, not immutable experiment evidence.
+    # Durable worker attempts already carry the capability snapshot that justified
+    # scheduling, so portable reports deliberately omit registrations entirely.
+    projected["worker_registrations"] = []
 
     return projected
 
