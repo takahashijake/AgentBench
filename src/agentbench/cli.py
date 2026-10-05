@@ -508,6 +508,19 @@ def _run_suite(
     service: SuiteService,
 ) -> int:
     loaded = load_suite_manifest(args.manifest)
+    readiness = preflight_suite(loaded)
+    blocked_agents = [row for row in readiness["agents"] if not row["ready"]]
+    if blocked_agents:
+        _write_json(
+            {
+                "execution_blocked": True,
+                "reason": "agent_preflight_failed",
+                "preflight": readiness,
+            },
+            getattr(args, "output", None),
+        )
+        return 3
+
     expected_lock_path = getattr(args, "lock", None)
 
     if expected_lock_path:
