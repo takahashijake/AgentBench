@@ -223,7 +223,6 @@ def test_regression_comparison_rejects_task_definition_drift(tmp_path: Path):
         compare_bundles(baseline_path, changed_path)
 
 
-
 def test_regression_comparison_rejects_mismatched_eligible_coverage(
     tmp_path: Path,
 ):
