@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from ..adapters.base import AgentAdapter
 from ..adapters.registry import AdapterRegistry, create_default_adapter_registry
 from ..artifacts import RunArtifactStore
+from ..defaults import DEFAULT_AGENT_COMMAND_TEMPLATE
 from ..evidence import capture_git_evidence
 from ..execution import ProcessResult, run_shell_command
 from ..models.database import AgentConfig, BenchmarkRun, BenchmarkTask
@@ -97,7 +98,7 @@ class BenchmarkService:
             config = {
                 "name": "qwen",
                 "model": "default",
-                "command_template": "qwen -p {prompt}",
+                "command_template": DEFAULT_AGENT_COMMAND_TEMPLATE,
             }
         else:
             agent_config = (
