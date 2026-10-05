@@ -181,7 +181,9 @@ def test_run_suite_blocks_failed_agent_preflight_before_execution(
 
     class MustNotExecute:
         def execute_suite(self, _loaded):
-            raise AssertionError("suite execution must not start after failed preflight")
+            raise AssertionError(
+                "suite execution must not start after failed preflight"
+            )
 
     args = argparse.Namespace(
         manifest=result["manifest_path"],
