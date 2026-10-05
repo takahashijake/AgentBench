@@ -69,3 +69,29 @@ def test_process_closes_stdin_for_noninteractive_automation(
     assert result.returncode == 0
     assert result.stdout.strip() == "0"
     assert observed["stdin"] == subprocess.DEVNULL
+
+
+def test_process_env_overrides_preserve_parent_environment(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setenv("AGENTBENCH_PARENT_SENTINEL", "parent")
+    monkeypatch.setenv("AGENTBENCH_OVERRIDE_SENTINEL", "parent-value")
+
+    result = run_process(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import os; "
+                "print(os.environ['AGENTBENCH_PARENT_SENTINEL']); "
+                "print(os.environ['AGENTBENCH_OVERRIDE_SENTINEL'])"
+            ),
+        ],
+        cwd=tmp_path,
+        timeout=5,
+        env={"AGENTBENCH_OVERRIDE_SENTINEL": "child-value"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["parent", "child-value"]
