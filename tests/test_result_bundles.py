@@ -274,10 +274,7 @@ def test_result_bundle_projects_worker_owner_privacy_and_scope(tmp_path: Path):
     assert "owner_id" not in report["summary"]["worker_attempts"][0]
     assert report["summary"]["worker_summary"]["owners"] == [owner_hash]
 
-    registrations = report["summary"]["worker_registrations"]
-    assert len(registrations) == 1
-    assert registrations[0]["owner_id_sha256"] == owner_hash
-    assert "owner_id" not in registrations[0]
+    assert report["summary"]["worker_registrations"] == []
 
     execution_details = experiment_doc["executions"][0]["details"]
     assert execution_details["owner_id_sha256"] == owner_hash
