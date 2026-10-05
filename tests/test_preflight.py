@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
 
 import pytest
 
-from agentbench.cli import main
+from agentbench.cli import _run_suite, main
 from agentbench.manifests import load_suite_manifest
 from agentbench.packs import materialize_pack
 from agentbench.preflight import preflight_suite
@@ -155,3 +156,44 @@ def test_suite_preflight_reports_missing_task_repository(tmp_path: Path):
     )
     assert failed["ready"] is False
     assert "repository readiness failed" in failed["reasons"][0]
+
+
+def test_run_suite_blocks_failed_agent_preflight_before_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+):
+    result = materialize_pack(
+        "smoke-v2",
+        tmp_path / "blocked-run",
+        agents=[_agent('qwen -p "{prompt}"')],
+        repetitions=1,
+    )
+    monkeypatch.setattr(
+        "agentbench.preflight.executable_identity",
+        lambda _command: {
+            "command": "qwen",
+            "resolved_name": "qwen",
+            "version": "fixture",
+            "binary_sha256": "0" * 64,
+        },
+    )
+
+    class MustNotExecute:
+        def execute_suite(self, _loaded):
+            raise AssertionError("suite execution must not start after failed preflight")
+
+    args = argparse.Namespace(
+        manifest=result["manifest_path"],
+        lock=None,
+        write_lock=None,
+        output=None,
+        markdown=None,
+    )
+
+    assert _run_suite(args, MustNotExecute()) == 3
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["execution_blocked"] is True
+    assert payload["reason"] == "agent_preflight_failed"
+    assert payload["preflight"]["agents"][0]["ready"] is False
+    assert "unattended editing" in payload["preflight"]["agents"][0]["reasons"][0]
