@@ -16,7 +16,7 @@ from agentbench.campaigns import (
 )
 from agentbench.cli import main
 from agentbench.manifests import load_suite_manifest
-from agentbench.models.database import Base, Campaign
+from agentbench.models.database import Base, Campaign, CampaignMemberRun
 from agentbench.packs import materialize_pack
 from agentbench.provenance import build_suite_lock, write_suite_lock
 from agentbench.reporting import render_campaign_markdown
@@ -150,3 +150,42 @@ def test_campaign_cli_validate_is_machine_readable(tmp_path: Path, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["valid"] is True
     assert payload["member_count"] == 2
+
+
+def test_campaign_stop_on_error_preserves_unattempted_members(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    campaign_path = make_campaign_definition(tmp_path)
+    payload = yaml.safe_load(campaign_path.read_text(encoding="utf-8"))
+    payload["stop_on_error"] = True
+    campaign_path.write_text(
+        yaml.safe_dump(payload, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    loaded = load_campaign_manifest(campaign_path)
+    db = make_session()
+    service = CampaignService(db, artifact_root=tmp_path / "artifacts")
+    calls = 0
+
+    def fail_first(_suite):
+        nonlocal calls
+        calls += 1
+        assert db.query(CampaignMemberRun).count() == 2
+        raise RuntimeError("fixture campaign failure")
+
+    monkeypatch.setattr(service.suites, "execute_suite", fail_first)
+
+    campaign = service.run_campaign(loaded)
+    report = service.build_report(int(campaign.id))
+
+    assert calls == 1
+    assert campaign.status == "failed"
+    assert len(campaign.members) == 2
+    assert [row["status"] for row in report["members"]] == ["error", "skipped"]
+    assert report["members"][0]["started_at"] is not None
+    assert report["members"][1]["started_at"] is None
+    assert report["members"][1]["completed_at"] is not None
+    assert "stop_on_error" in report["members"][1]["error"]
+    assert report["aggregate"]["overall"]["benchmark_runs"] == 0
