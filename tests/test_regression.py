@@ -221,3 +221,27 @@ def test_regression_comparison_rejects_task_definition_drift(tmp_path: Path):
 
     with pytest.raises(RegressionComparisonError, match="task definitions"):
         compare_bundles(baseline_path, changed_path)
+
+
+def test_regression_comparison_rejects_mismatched_eligible_coverage(
+    tmp_path: Path,
+):
+    db, experiment, _ = build_regression_fixture(tmp_path)
+    service = ResultBundleService(db)
+    baseline_path = tmp_path / "coverage-baseline.zip"
+    candidate_path = tmp_path / "coverage-candidate.zip"
+    service.export(experiment.id, baseline_path)
+
+    trial = (
+        db.query(ExperimentTrial)
+        .filter(ExperimentTrial.experiment_id == experiment.id)
+        .one()
+    )
+    trial.status = "skipped"
+    trial.error = "resource requirements not satisfied"
+    trial.benchmark_run_id = None
+    db.commit()
+    service.export(experiment.id, candidate_path)
+
+    with pytest.raises(RegressionComparisonError, match="eligible-run coverage"):
+        compare_bundles(baseline_path, candidate_path)

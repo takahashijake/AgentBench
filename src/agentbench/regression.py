@@ -204,6 +204,16 @@ def compare_verified_bundles(
     for name in sorted(baseline_agents):
         baseline_snapshot = _agent_snapshot(baseline_agents[name])
         candidate_snapshot = _agent_snapshot(candidate_agents[name])
+        if (
+            baseline_snapshot["eligible_planned_runs"]
+            != candidate_snapshot["eligible_planned_runs"]
+        ):
+            raise RegressionComparisonError(
+                "Baseline and candidate eligible-run coverage does not match "
+                f"for agent {name!r}: "
+                f"baseline={baseline_snapshot['eligible_planned_runs']}, "
+                f"candidate={candidate_snapshot['eligible_planned_runs']}"
+            )
         rows.append(
             {
                 "agent_name": name,
