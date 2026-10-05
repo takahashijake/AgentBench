@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
+from ..defaults import DEFAULT_AGENT_COMMAND_TEMPLATE
 from ..execution import ProcessResult
 
 
@@ -14,7 +15,9 @@ class AgentAdapter(ABC):
         self.config = config
         self.name = config.get("name", "agent")
         self.model = config.get("model", "unknown")
-        self.command_template = config.get("command_template", "qwen -p {prompt}")
+        self.command_template = config.get(
+            "command_template", DEFAULT_AGENT_COMMAND_TEMPLATE
+        )
         self.stdout_path: Optional[Path] = None
         self.stderr_path: Optional[Path] = None
         self.workspace_path: Optional[Path] = None

@@ -5,11 +5,13 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..defaults import DEFAULT_AGENT_COMMAND_TEMPLATE
+
 
 class AgentConfigBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
-    command_template: str = Field(default="qwen -p {prompt}")
+    command_template: str = Field(default=DEFAULT_AGENT_COMMAND_TEMPLATE)
     enabled: bool = True
 
 

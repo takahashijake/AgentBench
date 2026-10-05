@@ -51,7 +51,7 @@ V2 schema-2 manifests without `provider` remain valid.
 ```yaml
 - id: qwen
   description: Local Qwen CLI
-  command_template: qwen -p "{prompt}"
+  command_template: qwen -p "{prompt}" --approval-mode auto-edit
   enabled: true
 ```
 
