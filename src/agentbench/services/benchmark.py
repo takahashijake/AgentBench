@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from ..adapters.base import AgentAdapter
+from ..adapters.policy import require_automation_ready
 from ..adapters.registry import AdapterRegistry, create_default_adapter_registry
 from ..artifacts import RunArtifactStore
 from ..defaults import DEFAULT_AGENT_COMMAND_TEMPLATE
@@ -109,6 +110,7 @@ class BenchmarkService:
                 "model": "default",
                 "command_template": agent_config.command_template,
             }
+        require_automation_ready(str(config["command_template"]))
         return self.adapter_registry.create(config)
 
     def verify_repository(self, repo_path: Path) -> str:
