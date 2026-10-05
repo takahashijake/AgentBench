@@ -298,14 +298,22 @@ class ResultBundleService:
         payloads: dict[str, bytes] = {}
         for trial in experiment.trials:
             run = trial.benchmark_run
-            if run is None or not isinstance(run.results, dict):
+            if run is None:
                 continue
+            if not isinstance(run.results, dict):
+                raise BundleValidationError(
+                    f"Benchmark run {int(run.id)} is missing artifact metadata"
+                )
             artifact_directory = run.results.get("artifact_directory")
             if not artifact_directory:
-                continue
+                raise BundleValidationError(
+                    f"Benchmark run {int(run.id)} is missing artifact_directory"
+                )
             root = Path(str(artifact_directory)).expanduser().resolve()
             if not root.is_dir():
-                continue
+                raise BundleValidationError(
+                    f"Benchmark run {int(run.id)} artifact directory is missing: {root}"
+                )
 
             for candidate in sorted(root.rglob("*")):
                 if candidate.is_symlink() or not candidate.is_file():

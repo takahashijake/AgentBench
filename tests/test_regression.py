@@ -51,6 +51,13 @@ def build_regression_fixture(tmp_path: Path):
     db.add(task)
     db.flush()
 
+    artifact_dir = tmp_path / "regression-artifacts"
+    artifact_dir.mkdir(exist_ok=True)
+    (artifact_dir / "manifest.json").write_text(
+        '{"success": true}\n',
+        encoding="utf-8",
+    )
+
     run = BenchmarkRun(
         task_id=task.id,
         agent_config_id=agent.id,
@@ -64,6 +71,15 @@ def build_regression_fixture(tmp_path: Path):
         files_changed=1,
         insertions=1,
         deletions=0,
+        results={
+            "artifact_directory": str(artifact_dir),
+            "base_commit": "a" * 40,
+            "workspace_diff_stats": {
+                "files_changed": 1,
+                "insertions": 1,
+                "deletions": 0,
+            },
+        },
     )
     db.add(run)
     db.flush()
