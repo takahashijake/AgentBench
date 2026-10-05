@@ -97,22 +97,39 @@ class CampaignService:
         self.db.commit()
         self.db.refresh(campaign)
 
-        failed = False
+        campaign_id = int(campaign.id)
+        member_database_ids: list[int] = []
         for ordinal, item in enumerate(prepared, start=1):
             member = CampaignMemberRun(
-                campaign_id=int(campaign.id),
+                campaign_id=campaign_id,
                 member_id=item.id,
                 ordinal=ordinal,
                 suite_id=item.suite.manifest.id,
                 suite_manifest_sha256=item.suite.sha256,
                 lock_identity_sha256=str(item.lock["identity_sha256"]),
-                status="running",
-                started_at=utc_now(),
+                status="planned",
             )
             self.db.add(member)
+            self.db.flush()
+            member_database_ids.append(int(member.id))
+        self.db.commit()
+
+        failed = False
+        for member_index, (item, member_database_id) in enumerate(
+            zip(prepared, member_database_ids)
+        ):
+            (
+                self.db.query(CampaignMemberRun)
+                .filter(CampaignMemberRun.id == member_database_id)
+                .update(
+                    {
+                        CampaignMemberRun.status: "running",
+                        CampaignMemberRun.started_at: utc_now(),
+                    },
+                    synchronize_session=False,
+                )
+            )
             self.db.commit()
-            self.db.refresh(member)
-            member_database_id = int(member.id)
 
             try:
                 imported, experiment, summary = self.suites.execute_suite(item.suite)
@@ -159,9 +176,30 @@ class CampaignService:
             self.db.commit()
 
             if failed and loaded.manifest.stop_on_error:
+                skipped_at = utc_now()
+                skipped_reason = (
+                    "not attempted because campaign stop_on_error was triggered "
+                    "by an earlier member"
+                )
+                for skipped_id in member_database_ids[member_index + 1 :]:
+                    (
+                        self.db.query(CampaignMemberRun)
+                        .filter(
+                            CampaignMemberRun.id == skipped_id,
+                            CampaignMemberRun.status == "planned",
+                        )
+                        .update(
+                            {
+                                CampaignMemberRun.status: "skipped",
+                                CampaignMemberRun.error: skipped_reason,
+                                CampaignMemberRun.completed_at: skipped_at,
+                            },
+                            synchronize_session=False,
+                        )
+                    )
+                self.db.commit()
                 break
 
-        campaign_id = int(campaign.id)
         (
             self.db.query(Campaign)
             .filter(Campaign.id == campaign_id)
