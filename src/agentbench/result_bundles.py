@@ -338,7 +338,7 @@ class ResultBundleService:
                         if item.completed_at is not None
                         else None
                     ),
-                    "details": dict(item.details or {}),
+                    "details": _portable_owner_values(dict(item.details or {})),
                 }
                 for item in experiment.worker_attempts
             ],
