@@ -188,6 +188,22 @@ def test_result_bundle_is_deterministic_and_verifiable(tmp_path: Path):
     assert inspected["manifest"]["experiment"]["name"] == "bundle experiment"
 
 
+def test_result_bundle_export_rejects_missing_run_artifacts(tmp_path: Path):
+    db, experiment = make_bundle_session(tmp_path)
+    run = experiment.trials[0].benchmark_run
+    assert run is not None
+    assert isinstance(run.results, dict)
+
+    artifact_dir = Path(run.results["artifact_directory"])
+    artifact_dir.rename(tmp_path / "removed-artifacts")
+    bundle = tmp_path / "incomplete.zip"
+
+    with pytest.raises(BundleValidationError, match="artifact directory is missing"):
+        ResultBundleService(db).export(experiment.id, bundle)
+
+    assert not bundle.exists()
+
+
 def test_bundle_extract_verifies_before_writing(tmp_path: Path):
     db, experiment = make_bundle_session(tmp_path)
     bundle = tmp_path / "bundle.zip"
