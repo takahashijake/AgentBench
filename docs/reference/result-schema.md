@@ -74,8 +74,9 @@ capabilities. Durable lease attempts retain the capability snapshot that
 justified scheduling.
 
 Portable result bundles do not copy raw worker owner IDs. Worker attempts,
-execution details, worker summaries, and experiment-relevant registrations use
-SHA-256 owner projections so shared evidence can correlate records without
-disclosing a hostname-derived identifier. Live worker registrations unrelated to
-the exported experiment are omitted from portable reports; local analysis may
-still show the active registration set.
+execution details, and worker summaries use SHA-256 owner projections so shared
+evidence can correlate records without disclosing a hostname-derived identifier.
+Live worker registrations are omitted from portable reports because registration
+heartbeat/capability state can change after an experiment; durable worker attempts
+already retain the capability snapshot that justified scheduling. Local analysis
+may still show the active registration set.
