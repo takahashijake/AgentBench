@@ -261,6 +261,21 @@ def test_unittest_output_counts_are_parsed():
     assert failed == 2
 
 
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        ("1 passed, 2 errors in 0.10s", (1, 2)),
+        ("2 passed, 1 failed, 3 errors in 0.10s", (2, 4)),
+        ("1 error in 0.10s", (0, 1)),
+    ],
+)
+def test_pytest_error_counts_are_included_in_failed_metrics(
+    output: str,
+    expected: tuple[int, int],
+):
+    assert BenchmarkService._parse_test_counts(output, "") == expected
+
+
 def test_direct_benchmark_rejects_known_agent_without_unattended_mode(tmp_path: Path):
     db = make_session()
     agent = AgentConfig(
