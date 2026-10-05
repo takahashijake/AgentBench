@@ -5,10 +5,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from agentbench.models.database import AgentConfig, Base, BenchmarkTask
+from agentbench.api.routers.runs import create_run
+from agentbench.models.database import AgentConfig, Base, BenchmarkRun, BenchmarkTask
+from agentbench.schemas import BenchmarkRunCreate
 from agentbench.services.benchmark import BenchmarkService
 
 from helpers import init_git_repo
@@ -255,3 +259,85 @@ def test_unittest_output_counts_are_parsed():
 
     assert passed == 3
     assert failed == 2
+
+
+def test_direct_benchmark_rejects_known_agent_without_unattended_mode(tmp_path: Path):
+    db = make_session()
+    agent = AgentConfig(
+        name="unsafe-qwen",
+        command_template='qwen -p "{prompt}"',
+    )
+    db.add(agent)
+    db.flush()
+    task = BenchmarkTask(
+        name="unsafe direct run",
+        description="fixture",
+        repository_path=str(tmp_path / "must-not-be-touched"),
+        base_commit="0" * 40,
+        agent_prompt="edit the repository",
+        test_command="",
+        timeout=5,
+        agent_config_id=agent.id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    service = BenchmarkService(db, artifact_root=tmp_path / "artifacts")
+
+    with pytest.raises(ValueError, match="not automation-ready"):
+        service.execute_benchmark(task, agent_config_id=agent.id)
+
+    assert db.query(BenchmarkRun).count() == 0
+    assert not (tmp_path / "must-not-be-touched").exists()
+
+
+def test_known_agent_explicit_automation_mode_is_accepted_by_adapter_boundary():
+    db = make_session()
+    agent = AgentConfig(
+        name="automation-qwen",
+        command_template='qwen -p "{prompt}" --approval-mode auto-edit',
+    )
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
+
+    adapter = BenchmarkService(db).create_agent_adapter(agent.id)
+
+    assert adapter.command_template == agent.command_template
+
+
+def test_api_run_returns_400_for_non_automation_ready_known_agent(tmp_path: Path):
+    db = make_session()
+    agent = AgentConfig(
+        name="unsafe-codex",
+        command_template='codex exec "{prompt}"',
+    )
+    db.add(agent)
+    db.flush()
+    task = BenchmarkTask(
+        name="unsafe api run",
+        description="fixture",
+        repository_path=str(tmp_path / "must-not-be-touched"),
+        base_commit="0" * 40,
+        agent_prompt="edit the repository",
+        test_command="",
+        timeout=5,
+        agent_config_id=agent.id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    with pytest.raises(HTTPException) as caught:
+        create_run(
+            BenchmarkRunCreate(
+                task_id=int(task.id),
+                agent_config_id=int(agent.id),
+            ),
+            db,
+        )
+
+    assert caught.value.status_code == 400
+    assert "not automation-ready" in str(caught.value.detail)
+    assert db.query(BenchmarkRun).count() == 0
