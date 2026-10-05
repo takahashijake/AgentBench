@@ -85,6 +85,11 @@ def run_process(
     else:
         popen_kwargs["start_new_session"] = True
 
+    process_env: dict[str, str] | None = None
+    if env is not None:
+        process_env = os.environ.copy()
+        process_env.update(env)
+
     started = time.monotonic()
     process = subprocess.Popen(
         list(argv),
@@ -93,7 +98,7 @@ def run_process(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
-        env=dict(env) if env is not None else None,
+        env=process_env,
         **popen_kwargs,
     )
 
