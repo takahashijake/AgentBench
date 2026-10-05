@@ -298,6 +298,14 @@ def test_publication_verifier_rejects_tampering_and_undeclared_files(tmp_path: P
     with pytest.raises(PublicationValidationError, match="undeclared"):
         verify_publication(extra)
 
+    nested = tmp_path / "nested-site"
+    publish_bundle(bundle, nested)
+    assets = nested / "assets"
+    assets.mkdir()
+    (assets / "script.js").write_text("unexpected", encoding="utf-8")
+    with pytest.raises(PublicationValidationError, match="undeclared"):
+        verify_publication(nested)
+
 
 def test_publication_cli_bundle_and_verify(tmp_path: Path, capsys):
     db, experiment = make_bundle_session(tmp_path)
