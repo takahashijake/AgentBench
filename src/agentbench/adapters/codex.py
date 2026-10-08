@@ -17,7 +17,9 @@ class CodexAgentAdapter(ShellAgentAdapter):
         if executable not in {"codex", "codex.exe"}:
             raise ValueError("Codex adapter requires the codex executable")
         if len(argv) < 2 or argv[1] != "exec":
-            raise ValueError("Codex adapter requires a noninteractive 'codex exec' command")
+            raise ValueError(
+                "Codex adapter requires a noninteractive 'codex exec' command"
+            )
         if "--json" not in argv:
             argv.insert(2, "--json")
         return argv
@@ -50,7 +52,10 @@ class CodexAgentAdapter(ShellAgentAdapter):
             if event_type in {"item.started", "item.completed"}:
                 item = event.get("item")
                 if isinstance(item, dict) and item.get("type") in {
-                    "command_execution", "file_change", "mcp_tool_call", "web_search"
+                    "command_execution",
+                    "file_change",
+                    "mcp_tool_call",
+                    "web_search",
                 }:
                     item_id = item.get("id")
                     if isinstance(item_id, str) and item_id:
@@ -61,9 +66,13 @@ class CodexAgentAdapter(ShellAgentAdapter):
             "turn_completed": bool(completed),
             "tool_activity_count": len(tool_items) if completed or tool_items else None,
             "termination_reason": (
-                "timeout" if result.timed_out else
-                "process_error" if result.returncode != 0 else
-                "completed" if completed else "unknown"
+                "timeout"
+                if result.timed_out
+                else "process_error"
+                if result.returncode != 0
+                else "completed"
+                if completed
+                else "unknown"
             ),
         }
         return metadata
