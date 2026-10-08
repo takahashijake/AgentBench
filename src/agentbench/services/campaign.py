@@ -317,7 +317,38 @@ class CampaignService:
             }
             for item in campaign.members
         ]
+        status_counts = {
+            status: sum(1 for row in members if row["status"] == status)
+            for status in (
+                "planned",
+                "running",
+                "completed",
+                "failed",
+                "error",
+                "skipped",
+            )
+        }
+        total = len(members)
+        terminal = sum(
+            status_counts[key] for key in ("completed", "failed", "error", "skipped")
+        )
+        progress = {
+            "total_members": total,
+            "terminal_members": terminal,
+            "remaining_members": total - terminal,
+            "completion_fraction": terminal / total if total else None,
+            "status_counts": status_counts,
+            "failed_member_ids": [
+                row["member_id"]
+                for row in members
+                if row["status"] in {"failed", "error"}
+            ],
+            "skipped_member_ids": [
+                row["member_id"] for row in members if row["status"] == "skipped"
+            ],
+        }
         return {
+            "progress": progress,
             "campaign_report_schema_version": CAMPAIGN_REPORT_SCHEMA_VERSION,
             "campaign": {
                 "id": int(campaign.id),
