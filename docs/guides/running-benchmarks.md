@@ -45,3 +45,11 @@ worker remains, then run:
 agentbench recover <experiment-id> --confirm-inactive
 agentbench execute <experiment-id> --workers 4
 ```
+
+## Codex structured execution (V11 focused integration)
+
+Configure an agent with `command_template: "codex exec '{prompt}'"`. The dedicated Codex adapter adds `--json` automatically after `exec`, preserving the prompt as one subprocess argument without shell interpolation. The command must start with `codex exec`; interactive Codex entry points are rejected. Keep your existing AgentBench isolation, task workspace, and agent timeout policies in place. Codex CLI must already be installed and authenticated in the execution environment.
+
+The adapter stores a bounded `execution_evidence` object under the existing `adapter_metadata` run result: `source` (Codex JSONL when recognized), `turn_completed`, `tool_activity_count` (distinct IDs for observed command/file/MCP/web events), and `termination_reason` (timeout, process_error, completed, or unknown). Incomplete/malformed lines are ignored; absent activity and cost telemetry are null, not zero estimates. Generic structured token usage is extracted by the existing usage parser where present. This is not a pricing estimator or a proof that tasks succeeded; benchmark tests remain the success authority.
+
+Reproducible no-account check: `python -m pytest tests/test_codex_adapter.py tests/test_result_bundles.py -q`. Running a real agent additionally requires a configured locked benchmark suite, installed Codex CLI, credentials, and permission to run it; CI fixture tests do not establish those prerequisites.
