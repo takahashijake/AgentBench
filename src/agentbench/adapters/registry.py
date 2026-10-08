@@ -8,6 +8,7 @@ import shlex
 from typing import Any, Protocol
 
 from .base import AgentAdapter
+from .codex import CodexAgentAdapter
 from .shell import ShellAgentAdapter
 from ..usage import detect_agent_family
 
@@ -76,7 +77,8 @@ def _shell_factory(config: dict[str, Any]) -> AgentAdapter:
 def create_default_adapter_registry() -> AdapterRegistry:
     registry = AdapterRegistry()
     registry.register("shell", _shell_factory)
-    for family in ("codex", "qwen", "claude", "gemini"):
+    registry.register("codex", lambda config: CodexAgentAdapter(config))
+    for family in ("qwen", "claude", "gemini"):
         registry.register(family, _shell_factory)
     return registry
 
