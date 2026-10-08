@@ -109,6 +109,11 @@ def test_campaign_executes_two_suites_and_aggregates_agents(tmp_path: Path):
     assert all(row["experiment_id"] for row in report["members"])
 
     aggregate = report["aggregate"]
+    assert report["progress"]["total_members"] == 2
+    assert report["progress"]["terminal_members"] == 2
+    assert report["progress"]["remaining_members"] == 0
+    assert report["progress"]["completion_fraction"] == 1.0
+    assert report["progress"]["status_counts"]["completed"] == 2
     assert aggregate["overall"]["eligible_planned_runs"] == 4
     assert aggregate["overall"]["benchmark_runs"] == 4
     assert aggregate["overall"]["orchestration_errors"] == 0
@@ -189,3 +194,63 @@ def test_campaign_stop_on_error_preserves_unattempted_members(
     assert report["members"][1]["completed_at"] is not None
     assert "stop_on_error" in report["members"][1]["error"]
     assert report["aggregate"]["overall"]["benchmark_runs"] == 0
+    assert report["progress"]["status_counts"]["error"] == 1
+    assert report["progress"]["status_counts"]["skipped"] == 1
+    assert report["progress"]["failed_member_ids"] == ["smoke-first"]
+    assert report["progress"]["skipped_member_ids"] == ["smoke-second"]
+
+
+def test_campaign_report_shows_interrupted_members_without_reexecution(tmp_path: Path):
+    db = make_session()
+    campaign = Campaign(
+        campaign_key="interrupted",
+        name="Interrupted campaign",
+        manifest_sha256="a" * 64,
+        definition={},
+        stop_on_error=False,
+        status="running",
+    )
+    db.add(campaign)
+    db.flush()
+    db.add_all(
+        [
+            CampaignMemberRun(
+                campaign_id=campaign.id,
+                member_id="done",
+                ordinal=1,
+                suite_id="s1",
+                suite_manifest_sha256="b" * 64,
+                lock_identity_sha256="c" * 64,
+                status="completed",
+            ),
+            CampaignMemberRun(
+                campaign_id=campaign.id,
+                member_id="active",
+                ordinal=2,
+                suite_id="s2",
+                suite_manifest_sha256="d" * 64,
+                lock_identity_sha256="e" * 64,
+                status="running",
+            ),
+            CampaignMemberRun(
+                campaign_id=campaign.id,
+                member_id="pending",
+                ordinal=3,
+                suite_id="s3",
+                suite_manifest_sha256="f" * 64,
+                lock_identity_sha256="0" * 64,
+                status="planned",
+            ),
+        ]
+    )
+    db.commit()
+
+    report = CampaignService(db).build_report(campaign.id)
+    progress = report["progress"]
+    assert progress["total_members"] == 3
+    assert progress["terminal_members"] == 1
+    assert progress["remaining_members"] == 2
+    assert progress["completion_fraction"] == pytest.approx(1 / 3)
+    assert progress["status_counts"]["running"] == 1
+    assert progress["status_counts"]["planned"] == 1
+    assert progress["failed_member_ids"] == []
