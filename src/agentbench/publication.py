@@ -290,7 +290,7 @@ def publish_experiment(
 def verify_publication(path: str | Path) -> VerifiedPublication:
     root = Path(path).expanduser().resolve()
     manifest_path = root / "publication.json"
-    if not root.is_dir() or not manifest_path.is_file():
+    if not root.is_dir() or not manifest_path.is_file() or manifest_path.is_symlink():
         raise PublicationValidationError(
             f"Publication directory is missing publication.json: {root}"
         )
