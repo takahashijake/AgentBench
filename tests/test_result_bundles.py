@@ -337,3 +337,46 @@ def test_publication_cli_bundle_and_verify(tmp_path: Path, capsys):
     verified = json.loads(capsys.readouterr().out)
     assert verified["valid"] is True
     assert verified["experiment"]["name"] == "bundle experiment"
+
+
+def test_publication_verifier_rejects_external_manifest_symlink(tmp_path: Path):
+    db, experiment = make_bundle_session(tmp_path)
+    bundle = tmp_path / "source.zip"
+    ResultBundleService(db).export(experiment.id, bundle)
+    site = tmp_path / "site"
+    publish_bundle(bundle, site)
+
+    external = tmp_path / "external-manifest.json"
+    external.write_bytes((site / "publication.json").read_bytes())
+    (site / "publication.json").unlink()
+    try:
+        (site / "publication.json").symlink_to(external)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks are unavailable on this platform")
+
+    with pytest.raises(PublicationValidationError, match="missing publication.json"):
+        verify_publication(site)
+
+    # A valid self-contained publication must continue to verify.
+    (site / "publication.json").unlink()
+    (site / "publication.json").write_bytes(external.read_bytes())
+    assert verify_publication(site).manifest["identity_sha256"]
+
+
+def test_publication_verifier_rejects_payload_symlink(tmp_path: Path):
+    db, experiment = make_bundle_session(tmp_path)
+    bundle = tmp_path / "source.zip"
+    ResultBundleService(db).export(experiment.id, bundle)
+    site = tmp_path / "site"
+    publish_bundle(bundle, site)
+
+    external = tmp_path / "external-report.json"
+    external.write_bytes((site / "report.json").read_bytes())
+    (site / "report.json").unlink()
+    try:
+        (site / "report.json").symlink_to(external)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlinks are unavailable on this platform")
+
+    with pytest.raises(PublicationValidationError, match="payload is missing"):
+        verify_publication(site)
