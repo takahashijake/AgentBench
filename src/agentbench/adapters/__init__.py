@@ -1,6 +1,7 @@
 """Coding-agent adapter interfaces and registries."""
 
 from .base import AgentAdapter
+from .codex import CodexAgentAdapter
 from .registry import (
     AdapterFactory,
     AdapterRegistry,
@@ -14,6 +15,7 @@ __all__ = [
     "AdapterFactory",
     "AdapterRegistry",
     "AgentAdapter",
+    "CodexAgentAdapter",
     "AgentAdapterFactory",
     "ShellAgentAdapter",
     "create_default_adapter_registry",
