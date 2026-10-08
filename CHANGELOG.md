@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — Campaign progress inspection
+
+- Persisted campaign reports now expose member-status counts, completion fraction, remaining members, and identifiers of failed and skipped members, including partial interrupted campaigns.
+- This is observational only; it does not claim that interrupted campaigns can be resumed or that worker utilization is measured.
+
+
 ## Unreleased — V11 focused hardening and Codex evidence
 
 - Reject external symlinks for the publication manifest before JSON parsing (issue #38); add manifest and payload symlink regression tests.
