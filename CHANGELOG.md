@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — V11 focused hardening and Codex evidence
+
+- Reject external symlinks for the publication manifest before JSON parsing (issue #38); add manifest and payload symlink regression tests.
+- Add provider-specific noninteractive Codex `exec --json` adapter with normalized completion, unique tool activity, and termination evidence.
+- Missing structured evidence and token/cost fields remain unknown rather than inferred. Codex availability, authentication, and sandboxing remain operator responsibilities.
+- PR #37 portable worker privacy is **not** included or merged by this change.
+
+
 ## 10.0.0 — Reproducible Benchmark Campaigns
 
 ### Campaign manifests
