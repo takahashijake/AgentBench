@@ -68,3 +68,7 @@ This reads persisted campaign/member state and does not re-run suites.
 
 Benchmark test failures remain benchmark measurements; campaign orchestration
 failure is reserved for experiment/member execution failures.
+
+## Persisted campaign progress
+
+`agentbench campaign report <campaign-id>` includes a machine-readable `progress` object with `total_members`, `terminal_members`, `remaining_members`, `completion_fraction`, `status_counts`, `failed_member_ids`, and `skipped_member_ids`. The counts use persisted campaign-member states and remain meaningful if the campaign process stopped while a member was running. A running member is not assumed to have succeeded. This does not resume an interrupted campaign or infer per-worker utilization.
