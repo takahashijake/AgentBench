@@ -48,9 +48,10 @@ archive size bounds before extraction.
 
 Analysis schema 6 adds `worker_attempts` and `worker_summary`.
 
-Portable worker-attempt fields include trial ID, owner ID, status, acquisition,
-heartbeat, expiry, completion timestamps, and bounded details. The opaque lease
-token is intentionally excluded from reports and result bundles.
+Portable worker-attempt fields include trial ID, a SHA-256 projection of the
+owner ID, status, acquisition, heartbeat, expiry, completion timestamps, and
+bounded details. The opaque lease token and raw host-derived owner ID are
+intentionally excluded from result bundles.
 
 Worker-attempt statuses may include:
 
@@ -72,6 +73,10 @@ Analysis schema 7 adds `worker_registrations` containing active local worker
 capabilities. Durable lease attempts retain the capability snapshot that
 justified scheduling.
 
-Portable result bundles do not copy raw worker owner IDs. Worker attempts use an
-`owner_id_sha256` field so shared evidence can correlate attempts without
-disclosing a hostname-derived identifier.
+Portable result bundles do not copy raw worker owner IDs. Worker attempts,
+execution details, and worker summaries use SHA-256 owner projections so shared
+evidence can correlate records without disclosing a hostname-derived identifier.
+Live worker registrations are omitted from portable reports because registration
+heartbeat/capability state can change after an experiment; durable worker attempts
+already retain the capability snapshot that justified scheduling. Local analysis
+may still show the active registration set.

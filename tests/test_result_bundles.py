@@ -17,6 +17,8 @@ from agentbench.models.database import (
     Experiment,
     ExperimentExecution,
     ExperimentTrial,
+    ExperimentWorkerAttempt,
+    WorkerRegistration,
 )
 from agentbench.publication import (
     PublicationValidationError,
@@ -31,6 +33,7 @@ from agentbench.result_bundles import (
     inspect_result_bundle,
     verify_result_bundle,
 )
+from agentbench.timeutils import utc_now
 
 
 def make_bundle_session(tmp_path: Path):
@@ -202,6 +205,84 @@ def test_result_bundle_export_rejects_missing_run_artifacts(tmp_path: Path):
         ResultBundleService(db).export(experiment.id, bundle)
 
     assert not bundle.exists()
+
+
+def test_result_bundle_projects_worker_owner_privacy_and_scope(tmp_path: Path):
+    db, experiment = make_bundle_session(tmp_path)
+    owner = "private-host-worker"
+    unrelated_owner = "unrelated-host-worker"
+
+    execution = experiment.executions[0]
+    execution.mode = "distributed_worker"
+    execution.details = {
+        "owner_id": owner,
+        "nested": {"owner_id": owner},
+    }
+    trial = experiment.trials[0]
+    db.add(
+        ExperimentWorkerAttempt(
+            experiment_id=experiment.id,
+            trial_id=trial.id,
+            owner_id=owner,
+            lease_token="a" * 64,
+            status="completed",
+            expires_at=utc_now(),
+            details={"owner_id": owner, "worker_capabilities": {"platform": "linux"}},
+        )
+    )
+    db.add_all(
+        [
+            WorkerRegistration(
+                owner_id=owner,
+                status="active",
+                capabilities={
+                    "platform": "linux",
+                    "cpu_count": 8,
+                    "memory_mb": 16384,
+                    "commands": [],
+                    "labels": [],
+                },
+            ),
+            WorkerRegistration(
+                owner_id=unrelated_owner,
+                status="active",
+                capabilities={
+                    "platform": "linux",
+                    "cpu_count": 4,
+                    "memory_mb": 8192,
+                    "commands": [],
+                    "labels": [],
+                },
+            ),
+        ]
+    )
+    db.commit()
+
+    bundle = tmp_path / "worker-privacy.zip"
+    ResultBundleService(db).export(experiment.id, bundle)
+
+    with zipfile.ZipFile(bundle, "r") as archive:
+        report = json.loads(archive.read("report.json"))
+        experiment_doc = json.loads(archive.read("experiment.json"))
+
+    portable_text = json.dumps({"report": report, "experiment": experiment_doc})
+    assert owner not in portable_text
+    assert unrelated_owner not in portable_text
+
+    owner_hash = report["summary"]["worker_attempts"][0]["owner_id_sha256"]
+    assert len(owner_hash) == 64
+    assert "owner_id" not in report["summary"]["worker_attempts"][0]
+    assert report["summary"]["worker_summary"]["owners"] == [owner_hash]
+
+    assert report["summary"]["worker_registrations"] == []
+
+    execution_details = experiment_doc["executions"][0]["details"]
+    assert execution_details["owner_id_sha256"] == owner_hash
+    assert execution_details["nested"]["owner_id_sha256"] == owner_hash
+    assert experiment_doc["worker_attempts"][0]["owner_id_sha256"] == owner_hash
+    assert (
+        experiment_doc["worker_attempts"][0]["details"]["owner_id_sha256"] == owner_hash
+    )
 
 
 def test_bundle_extract_verifies_before_writing(tmp_path: Path):

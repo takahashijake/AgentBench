@@ -193,6 +193,46 @@ def _portable_agent_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _portable_owner_values(value: Any) -> Any:
+    """Hash host-derived worker owner identifiers in portable evidence."""
+
+    if isinstance(value, dict):
+        projected: dict[str, Any] = {}
+        for key, item in value.items():
+            if key == "owner_id" and isinstance(item, str):
+                projected["owner_id_sha256"] = _sha256_bytes(item.encode("utf-8"))
+            else:
+                projected[key] = _portable_owner_values(item)
+        return projected
+    if isinstance(value, list):
+        return [_portable_owner_values(item) for item in value]
+    return value
+
+
+def _portable_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    """Project local analysis onto experiment-scoped, privacy-safe semantics."""
+
+    projected = _portable_owner_values(summary)
+    if not isinstance(projected, dict):
+        return {}
+
+    worker_summary = projected.get("worker_summary")
+    raw_worker_summary = summary.get("worker_summary")
+    if isinstance(worker_summary, dict) and isinstance(raw_worker_summary, dict):
+        raw_owners = raw_worker_summary.get("owners")
+        if isinstance(raw_owners, list):
+            worker_summary["owners"] = [
+                _sha256_bytes(str(owner).encode("utf-8")) for owner in raw_owners
+            ]
+
+    # Registrations are live host state, not immutable experiment evidence.
+    # Durable worker attempts already carry the capability snapshot that justified
+    # scheduling, so portable reports deliberately omit registrations entirely.
+    projected["worker_registrations"] = []
+
+    return projected
+
+
 class ResultBundleService:
     """Export canonical experiment state and immutable artifacts."""
 
@@ -212,7 +252,7 @@ class ResultBundleService:
                 "stop_on_error": bool(experiment.stop_on_error),
                 "planned_runs": int(experiment.planned_runs),
             },
-            "summary": summary,
+            "summary": _portable_summary(summary),
         }
 
     def _experiment_document(self, experiment: Any) -> dict[str, Any]:
@@ -258,7 +298,7 @@ class ResultBundleService:
                     "mode": item.mode,
                     "max_workers": int(item.max_workers),
                     "status": item.status,
-                    "details": dict(item.details or {}),
+                    "details": _portable_owner_values(dict(item.details or {})),
                     "started_at": (
                         item.started_at.isoformat()
                         if item.started_at is not None
@@ -286,7 +326,7 @@ class ResultBundleService:
                         if item.completed_at is not None
                         else None
                     ),
-                    "details": dict(item.details or {}),
+                    "details": _portable_owner_values(dict(item.details or {})),
                 }
                 for item in experiment.worker_attempts
             ],
